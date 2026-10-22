@@ -530,7 +530,7 @@ class Youtube_Helper:
                 )
 
                 yt_dlp_common_opts = {
-                    "cookiesfrombrowser": ("brave",),
+                    "cookiesfrombrowser": ("chrome",),
                     "remote_components": ["ejs:github"],
                     "noplaylist": True,
                 }

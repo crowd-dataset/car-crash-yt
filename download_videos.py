@@ -8,7 +8,9 @@
 # -----------------------------------------------------------------------------
 
 import os
-from helper_script import Youtube_Helper
+import sys
+import time
+from helper_script import Youtube_Helper, YouTubeBlockedError, _optional_config
 import pandas as pd
 from custom_logger import CustomLogger
 from logmod import logs
@@ -61,6 +63,8 @@ def download_videos_from_mapping(mapping, video_paths) -> int:
 
     videos_seen = set()
     counter_downloaded = 0
+    # Seconds between downloads, so one run does not hammer YouTube.
+    pause_seconds = float(_optional_config("download_pause_seconds", 0) or 0)
 
     # ------------------------------------------------------------------
     # Go through mapping rows and collect unique video IDs.
@@ -100,6 +104,7 @@ def download_videos_from_mapping(mapping, video_paths) -> int:
 
                 if result is None:
                     logger.error(f"{vid}: video download failed.")
+                    time.sleep(pause_seconds)
                     continue
 
                 video_file_path, video_title, resolution, fps = result
@@ -111,7 +116,10 @@ def download_videos_from_mapping(mapping, video_paths) -> int:
                 )
 
                 counter_downloaded += 1
+                time.sleep(pause_seconds)
 
+        except YouTubeBlockedError:
+            raise
         except Exception as e:
             logger.warning(f"Skipping malformed mapping row due to error: {e!r}")
             continue
@@ -151,6 +159,12 @@ if __name__ == "__main__":
             f"{counter_downloaded} new video(s) downloaded."
         )
 
+    except YouTubeBlockedError as e:
+        # A per-video skip would burn through the list while blocked; stop and
+        # let the next run start again once the login works.
+        logger.error("YouTube blocks downloads; stopping this run: " + str(e))
+        sys.exit(2)
+
     except Exception as e:
-        logger.error(f"Video download pipeline failed: {e!r}")
+        logger.error("Video download pipeline failed: " + repr(e))
         raise

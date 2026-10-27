@@ -23,6 +23,28 @@ logger = CustomLogger(__name__)
 UPGRADE_LOG_FILE = "upgrade_log.json"
 
 
+# yt-dlp messages that mean YouTube is refusing this machine or login, not one
+# video. Going on with the next video would only make the block worse.
+_BLOCKED_MARKERS = (
+    "confirm you’re not a bot",
+    "confirm you're not a bot",
+    "http error 429",
+    "too many requests",
+)
+
+
+class YouTubeBlockedError(RuntimeError):
+    """YouTube refuses downloads from this machine or login; stop the run."""
+
+
+def _optional_config(name, default=None):
+    """Config value, or the default when neither config file defines it."""
+    try:
+        return common.get_configs(name)
+    except KeyError:
+        return default
+
+
 class Youtube_Helper:
     """
     A helper class for managing YouTube video downloads.
@@ -45,6 +67,11 @@ class Youtube_Helper:
         self.update_package = common.get_configs("update_package")
         self.need_authentication = common.get_configs("need_authentication")
         self.client = common.get_configs("client")
+        # Cookies for yt-dlp: a browser profile it reads live (e.g. "firefox",
+        # whose cookies need no desktop keyring), or a Netscape cookies file.
+        self.cookies_browser = _optional_config("cookies_browser", "chrome")
+        self.cookies_file = _optional_config("cookies_file")
+        self.js_runtimes = _optional_config("yt_dlp_js_runtimes", ["deno", "node"])
 
     def set_video_title(self, title):
         """
@@ -530,10 +557,16 @@ class Youtube_Helper:
                 )
 
                 yt_dlp_common_opts = {
-                    "cookiesfrombrowser": ("chrome",),
                     "remote_components": ["ejs:github"],
+                    "js_runtimes": {name: {} for name in self.js_runtimes},
                     "noplaylist": True,
                 }
+                if self.cookies_file:
+                    yt_dlp_common_opts["cookiefile"] = self.cookies_file
+                elif self.cookies_browser:
+                    yt_dlp_common_opts["cookiesfrombrowser"] = (
+                        self.cookies_browser,
+                    )
 
                 format_spec = (
                     "bv*[height<=720]+ba/"
@@ -607,6 +640,10 @@ class Youtube_Helper:
                     f"{vid}: yt-dlp download "
                     f"method failed: {ytdlp_error}"
                 )
+
+                message = str(ytdlp_error).casefold()
+                if any(marker in message for marker in _BLOCKED_MARKERS):
+                    raise YouTubeBlockedError(str(ytdlp_error)) from ytdlp_error
 
                 return None
 

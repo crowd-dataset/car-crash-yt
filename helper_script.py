@@ -72,6 +72,9 @@ class Youtube_Helper:
         self.cookies_browser = _optional_config("cookies_browser", "chrome")
         self.cookies_file = _optional_config("cookies_file")
         self.js_runtimes = _optional_config("yt_dlp_js_runtimes", ["deno", "node"])
+        # e.g. ["web_embedded", "mweb"]: these clients download without cookies
+        # where the default ones are cut off with HTTP 403. None keeps yt-dlp's choice.
+        self.player_clients = _optional_config("yt_dlp_player_clients")
 
     def set_video_title(self, title):
         """
@@ -567,6 +570,10 @@ class Youtube_Helper:
                     yt_dlp_common_opts["cookiesfrombrowser"] = (
                         self.cookies_browser,
                     )
+                if self.player_clients:
+                    yt_dlp_common_opts["extractor_args"] = {
+                        "youtube": {"player_client": list(self.player_clients)}
+                    }
 
                 format_spec = (
                     "bv*[height<=720]+ba/"

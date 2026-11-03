@@ -513,7 +513,7 @@ class CorePipelineTests(unittest.TestCase):
         self.assertEqual(rows[0]["end_time"], "[1077.833,1082.833]")
         self.assertEqual(rows[0]["vehicle_type"], "[car,car]")
 
-    def test_mapping_excludes_unknown_places(self) -> None:
+    def test_mapping_puts_unknown_places_in_one_row(self) -> None:
         state = {
             "videos": {
                 "abc": {
@@ -552,16 +552,20 @@ class CorePipelineTests(unittest.TestCase):
 
         rows = list(iter_mapping_rows(state))
 
-        # Unresolved geography remains auditable in state.json and the
-        # segment-level output, but mapping.csv contains only v7-resolved
-        # canonical localities.
-        self.assertEqual(rows, [])
+        # All segments without a v7-resolved locality share one row, id 0,
+        # with blank geography; the evidence stays in state.json.
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], 0)
+        self.assertEqual(rows[0]["locality"], "")
+        self.assertEqual(rows[0]["lat"], "")
+        self.assertEqual(rows[0]["videos"], "[abc,def]")
+        self.assertEqual(rows[0]["start_time"], "[[0.0,20.0],[4.0]]")
 
     def test_mapping_bracket_cells_do_not_quote_list_items(self) -> None:
         self.assertEqual(bracket_cell(["jJXT2zGlSc0"]), "[jJXT2zGlSc0]")
         self.assertEqual(bracket_cell(["car", "truck"]), "[car,truck]")
 
-    def test_mapping_csv_omits_unresolved_segments(self) -> None:
+    def test_mapping_csv_keeps_unresolved_segments_in_one_row(self) -> None:
         state = {
             "videos": {
                 "abc": {
@@ -605,7 +609,10 @@ class CorePipelineTests(unittest.TestCase):
                 rows = list(reader)
 
         self.assertEqual(reader.fieldnames, MAPPING_COLUMNS)
-        self.assertEqual(rows, [])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], "0")
+        self.assertEqual(rows[0]["locality"], "")
+        self.assertEqual(rows[0]["videos"], "[abc]")
 
     def test_author_timestamp_labels_follow_full_segments(self) -> None:
         labels = extract_description_timestamps(

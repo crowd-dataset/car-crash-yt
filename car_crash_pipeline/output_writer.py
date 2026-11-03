@@ -417,11 +417,16 @@ def _append_unique(values: List[str], additions: Any) -> None:
             values.append(text)
 
 
+UNRESOLVED_GROUP_KEY: Tuple[str, ...] = ("unresolved",)
+UNRESOLVED_ROW_ID = 0
+
+
 def _mapping_groups(state: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    Group only geographically resolved segments.
+    Group segments by verified canonical locality.
 
-    There is intentionally no synthetic "unknown" locality row.
+    Every segment without a verified locality goes into one unresolved group
+    with blank geographic fields, so mapping.csv covers all segments.
     """
     groups: Dict[Tuple[str, ...], Dict[str, Any]] = {}
 
@@ -440,12 +445,26 @@ def _mapping_groups(state: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         for segment in segments:
             location = _resolved_location(segment.get("location"))
-            if not location:
-                continue
+            key = (
+                _location_group_key(location)
+                if location
+                else UNRESOLVED_GROUP_KEY
+            )
 
-            key = _location_group_key(location)
-
-            if key not in groups:
+            if key == UNRESOLVED_GROUP_KEY and key not in groups:
+                groups[key] = {
+                    "unresolved": True,
+                    "locality": "",
+                    "locality_aka": [],
+                    "state": "",
+                    "country": "",
+                    "iso3": "",
+                    "continent": "",
+                    "lat": "",
+                    "lon": "",
+                    "videos": {},
+                }
+            elif key not in groups:
                 locality = _clean_locality(
                     location.get("locality"),
                     location,
@@ -665,11 +684,19 @@ def iter_rows(state: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
 def iter_mapping_rows(
     state: Dict[str, Any],
 ) -> Iterable[Dict[str, Any]]:
-    """Yield one row per verified canonical locality."""
-    for row_id, group in enumerate(
-        _mapping_groups(state),
-        start=1,
-    ):
+    """
+    Yield one row per verified canonical locality, then one row (id 0) with
+    every segment whose locality is unresolved.
+    """
+    groups = _mapping_groups(state)
+    resolved = [group for group in groups if not group.get("unresolved")]
+    unresolved = [group for group in groups if group.get("unresolved")]
+    numbered = [
+        *enumerate(resolved, start=1),
+        *((UNRESOLVED_ROW_ID, group) for group in unresolved),
+    ]
+
+    for row_id, group in numbered:
         videos = list(group["videos"])
         ranges = [
             group["videos"][video_id]

@@ -237,10 +237,15 @@ class LocationMappingRegressionTests(unittest.TestCase):
 
         rows = list(iter_mapping_rows(state))
 
-        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["id"], 1)
         self.assertEqual(rows[0]["locality"], "Kita")
         self.assertEqual(rows[0]["state"], "")
         self.assertEqual(rows[0]["videos"], "[resolved]")
+        # the not_found segment goes to the single unresolved row, last
+        self.assertEqual(rows[1]["id"], 0)
+        self.assertEqual(rows[1]["locality"], "")
+        self.assertEqual(rows[1]["lat"], "")
 
     def test_mapping_excludes_legacy_resolved_location_until_v7(self) -> None:
         state = {
@@ -270,7 +275,12 @@ class LocationMappingRegressionTests(unittest.TestCase):
             }
         }
 
-        self.assertEqual(list(iter_mapping_rows(state)), [])
+        rows = list(iter_mapping_rows(state))
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], 0)
+        self.assertEqual(rows[0]["locality"], "")
+        self.assertEqual(rows[0]["videos"], "[legacy]")
 
     def test_location_migration_can_be_bounded_and_checkpointed(self) -> None:
         state = {

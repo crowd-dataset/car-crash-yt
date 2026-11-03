@@ -253,7 +253,9 @@ class CrashResultsAnalysis:
             raise ValueError(f"mapping.csv is missing required columns: {missing}")
         for column in ("lat", "lon"):
             mapping[column] = pd.to_numeric(mapping[column], errors="coerce")
-        return mapping
+        # The geographic analysis covers resolved localities only; skip the
+        # single unresolved row (id 0, blank coordinates).
+        return mapping[mapping["id"].str.strip() != "0"].reset_index(drop=True)
 
     def _extract_segments(self, state: dict[str, Any]) -> pd.DataFrame:
         rows: list[dict[str, Any]] = []

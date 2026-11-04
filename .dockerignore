@@ -13,3 +13,9 @@ cookies.txt
 tests
 *.log
 .DS_Store
+state.json
+state.json.*
+geocode_cache.json
+_output
+figures
+paper_iv2027

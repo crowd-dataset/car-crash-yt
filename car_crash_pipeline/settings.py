@@ -134,6 +134,17 @@ if not isinstance(_mapping_csv_name, str) or not _mapping_csv_name.strip():
 MAPPING_CSV = DATA_DIR / _mapping_csv_name.strip()
 VIDEO_DIR = DATA_DIR / text("VIDEO_DIR")
 TEMP_DIR = VIDEO_DIR / ".tmp"
+# Optional read-only folders of videos downloaded elsewhere (e.g. a copy of the
+# crash_videos drive). A video found there is linked into VIDEO_DIR instead of
+# being downloaded again; the pipeline never deletes files in these folders.
+SHARED_VIDEO_DIRS = [
+    Path(item).expanduser()
+    for item in (
+        optional_text_list("SHARED_VIDEO_DIRS")
+        if "SHARED_VIDEO_DIRS" in _CONFIG
+        else []
+    )
+]
 GEOCODE_CACHE = DATA_DIR / text("GEOCODE_CACHE")
 
 DISCOVERY_QUERIES = text_list("DISCOVERY_QUERIES")

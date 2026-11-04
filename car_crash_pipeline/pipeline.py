@@ -7,8 +7,8 @@ from typing import Any, Dict
 
 from . import settings
 from .crash_review import (
-    CRASH_REVIEW_VERSION,
     SKIPPED_VISUAL_STATUSES,
+    UP_TO_DATE_REVIEW_VERSIONS,
     has_location_visual_review_errors,
     has_visual_review_errors,
     reset_temp_directory,
@@ -85,7 +85,7 @@ def requires_processing(record: Any) -> bool:
     if record.get("status") not in FINAL_STATUSES:
         return True
 
-    return record.get("visual_review_version") != CRASH_REVIEW_VERSION
+    return record.get("visual_review_version") not in UP_TO_DATE_REVIEW_VERSIONS
 
 
 def unfinished_count(state: Dict[str, Any]) -> int:

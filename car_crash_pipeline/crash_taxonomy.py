@@ -36,7 +36,7 @@ from .shared import (
 )
 
 
-CRASH_TAXONOMY_VERSION = "nhtsa_mmucc6_video_v1"
+CRASH_TAXONOMY_VERSION = "nhtsa_mmucc6_video_v2"
 CRASH_TAXONOMY_STANDARD = "NHTSA MMUCC 6th Edition (2024)"
 TAXONOMY_REVIEW_ATTEMPTS = 2
 
@@ -65,6 +65,51 @@ MANNER_OF_COLLISION_VALUES = {
     "rear_to_side_or_side_to_rear",
     "sideswipe_opposite_direction",
     "sideswipe_same_direction",
+    "other",
+    "unknown",
+}
+
+# Short MMUCC C9 definitions shown to the model. v1 showed no definitions and an
+# example answer, and the model returned that example for 99% of collisions.
+MANNER_OF_COLLISION_DEFINITIONS = {
+    "front_to_rear_or_rear_to_front": (
+        "the front of one vehicle strikes the rear of another (rear-end)"
+    ),
+    "front_to_front": "the fronts of two vehicles strike each other (head-on)",
+    "angle": (
+        "the front of one vehicle strikes the side of another at an angle "
+        "(T-bone, broadside, most intersection crashes)"
+    ),
+    "sideswipe_same_direction": (
+        "the sides of two vehicles moving in the same direction scrape or "
+        "strike each other"
+    ),
+    "sideswipe_opposite_direction": (
+        "the sides of two vehicles moving in opposite directions scrape or "
+        "strike each other"
+    ),
+    "rear_to_side_or_side_to_rear": (
+        "the rear of one vehicle strikes the side of another"
+    ),
+    "rear_to_rear": "the rears of two vehicles strike each other",
+    "not_collision_with_motor_vehicle_in_transport": (
+        "the first harmful event is not a collision with another moving motor "
+        "vehicle (e.g. a pedestrian, cyclist, barrier, parked car, rollover)"
+    ),
+    "other": "a collision between moving motor vehicles not covered above",
+    "unknown": "the orientation at impact cannot be seen",
+}
+
+CRASH_TYPE_VALUES = {
+    "rear_end",
+    "side_impact",
+    "head_on",
+    "rollover",
+    "pedestrian",
+    "cyclist",
+    "multi_vehicle",
+    "single_vehicle",
+    "near_collision",
     "other",
     "unknown",
 }
@@ -262,6 +307,14 @@ def validate_taxonomy_response(data: Dict[str, Any]) -> Optional[str]:
     if event_kind not in EVENT_KINDS:
         return "event_kind_must_be_collision_or_near_collision"
 
+    crash_type = _normalised_enum(data.get("crash_type"))
+    if crash_type not in CRASH_TYPE_VALUES:
+        return "crash_type_must_be_one_allowed_value"
+    if (event_kind == "near_collision") != (crash_type == "near_collision"):
+        return "crash_type_near_collision_must_match_event_kind"
+    if not clean_text(data.get("impact_description")):
+        return "impact_description_must_not_be_empty"
+
     manner = data.get("manner_of_collision")
     first_harmful = data.get("first_harmful_event")
     sequence = data.get("sequence_of_events")
@@ -316,8 +369,14 @@ def normalise_taxonomy_response(data: Dict[str, Any]) -> Dict[str, Any]:
     """Convert a validated model response into stable state and CSV fields."""
     event_kind = _normalised_enum(data.get("event_kind"))
 
+    checked = {
+        "crash_type": _normalised_enum(data.get("crash_type")),
+        "impact_description": clean_text(data.get("impact_description")),
+    }
+
     if event_kind == "near_collision":
         return {
+            **checked,
             "event_kind": "near_collision",
             "manner_of_collision_code": None,
             "manner_of_collision": None,
@@ -338,6 +397,7 @@ def normalise_taxonomy_response(data: Dict[str, Any]) -> Dict[str, Any]:
     ][:4]
 
     return {
+        **checked,
         "event_kind": "collision",
         "manner_of_collision_code": MANNER_OF_COLLISION_CODES[manner],
         "manner_of_collision": manner,
@@ -355,14 +415,17 @@ def taxonomy_prompt(
     segment: Dict[str, Any],
     metadata: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """Build the taxonomy-only prompt used to backfill accepted old segments."""
+    """Build the taxonomy-only prompt used to classify accepted segments."""
     metadata = metadata if isinstance(metadata, dict) else {}
     duration = float(segment.get("duration_seconds") or 0.0)
     title = clean_text(metadata.get("title"))
     previous_description = clean_text(segment.get("short_description"))
-    previous_type = clean_text(segment.get("crash_type"))
 
-    manner_values = ", ".join(sorted(MANNER_OF_COLLISION_VALUES))
+    manner_lines = "\n".join(
+        f"- {value}: {MANNER_OF_COLLISION_DEFINITIONS[value]}"
+        for value in sorted(MANNER_OF_COLLISION_VALUES)
+    )
+    crash_types = ", ".join(sorted(CRASH_TYPE_VALUES))
     first_values = ", ".join(sorted(FIRST_HARMFUL_EVENT_VALUES))
     sequence_values = ", ".join(sorted(SEQUENCE_OF_EVENT_VALUES))
 
@@ -376,6 +439,13 @@ the sampled clip.
 
 The clip duration is {duration:.3f} seconds.
 
+Work in this order:
+1. impact_description: one sentence saying what the first harmful event is and,
+   for a collision between vehicles, which part of each vehicle (front, rear,
+   left side, right side) touches the other. For a near collision, describe
+   the evasive action instead.
+2. Choose every other field so that it agrees with impact_description.
+
 Dataset extension:
 event_kind is collision when visible contact, damage-producing impact,
 rollover, fire, or another harmful crash event occurs.
@@ -384,29 +454,31 @@ visible evasive action. A near collision is outside MMUCC crash coding, so
 manner_of_collision and first_harmful_event must both be null and
 sequence_of_events must be [].
 
+crash_type is near_collision exactly when event_kind is near_collision. For a
+collision, choose the type that matches the impact: rear_end, side_impact,
+head_on, rollover, pedestrian, cyclist, multi_vehicle (three or more vehicles),
+single_vehicle (one vehicle and no other road user), other or unknown.
+Allowed crash_type values: {crash_types}
+
 For a collision:
 1. C7 First Harmful Event is the first visible injury-producing or
    damage-producing event.
-2. C9 Manner of Collision of the First Harmful Event describes orientation
-   only when the first harmful event is a collision with another motor vehicle
-   in transport.
+2. C9 Manner of Collision describes the orientation of the two vehicles at the
+   first harmful event, and only when that event is a collision with another
+   motor vehicle in transport. Otherwise it is
+   not_collision_with_motor_vehicle_in_transport.
 3. V37 Sequence of Events contains up to four visually observable events in
    chronological order. Include non-harmful precursor events only when visible.
    The first harmful event must appear in the sequence.
 
-If first_harmful_event is not motor_vehicle_in_transport, set
-manner_of_collision to not_collision_with_motor_vehicle_in_transport.
-If the first harmful event is motor_vehicle_in_transport, select its visible
-manner. Use unknown rather than guessing.
+Manner of collision values and their meaning:
+{manner_lines}
+Use unknown rather than guessing. Do not default to any value: rear-end
+collisions are only one of several common manners.
 
-Previous machine-generated context may help you find the relevant event but is
-not authoritative:
-previous short description: {previous_description or "none"}
-previous crash_type: {previous_type or "none"}
-upload title: {title or "none"}
-
-Allowed manner_of_collision:
-{manner_values}
+Previous machine-generated description, to help you find the event (it may be
+wrong): {previous_description or "none"}
+Upload title: {title or "none"}
 
 Allowed first_harmful_event:
 {first_values}
@@ -414,12 +486,15 @@ Allowed first_harmful_event:
 Allowed sequence_of_events:
 {sequence_values}
 
-Return JSON only and use the canonical snake_case values exactly:
+Return one JSON object only, with exactly these keys, each value chosen from
+the allowed values above (null where the rules say so):
 {{
-  "event_kind": "collision",
-  "manner_of_collision": "front_to_rear_or_rear_to_front",
-  "first_harmful_event": "motor_vehicle_in_transport",
-  "sequence_of_events": ["motor_vehicle_in_transport"]
+  "impact_description": "<one sentence>",
+  "event_kind": "<collision or near_collision>",
+  "crash_type": "<one crash_type value>",
+  "manner_of_collision": "<one manner_of_collision value, or null>",
+  "first_harmful_event": "<one first_harmful_event value, or null>",
+  "sequence_of_events": ["<up to four sequence_of_events values>"]
 }}
 """.strip()
 
@@ -456,12 +531,17 @@ def _mark_video_unavailable(
     status: str = "video_unavailable",
 ) -> None:
     for segment in segments:
+        # A re-classification cannot undo the earlier collision/near-collision
+        # decision just because the video is gone; keep it.
+        previous_event_kind = segment.get("event_kind")
         segment.update(
             _taxonomy_empty_fields(
                 status,
                 error=error,
             )
         )
+        if previous_event_kind in EVENT_KINDS:
+            segment["event_kind"] = previous_event_kind
 
     record["crash_taxonomy_status"] = status
     record["crash_taxonomy_error"] = error

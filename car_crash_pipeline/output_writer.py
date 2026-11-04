@@ -28,6 +28,7 @@ COLUMNS = [
     "duration_seconds",
     "confidence",
     "short_description",
+    "impact_description",
     "crash_type",
     "event_kind",
     "manner_of_collision_code",
@@ -600,6 +601,7 @@ def iter_rows(state: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
                 "short_description": segment.get(
                     "short_description"
                 ),
+                "impact_description": segment.get("impact_description"),
                 "crash_type": segment.get("crash_type"),
                 "event_kind": segment.get("event_kind"),
                 "manner_of_collision_code": segment.get(

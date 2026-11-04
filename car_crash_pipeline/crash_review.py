@@ -31,11 +31,20 @@ from .shared import (
 )
 
 
-CRASH_REVIEW_VERSION = "cosmos3_full_clip_crash_v3"
+# v4: the prompt no longer shows an example answer the model could copy.
+# Earlier reviews stay valid; their crash_type is re-checked by the taxonomy.
+CRASH_REVIEW_VERSION = "cosmos3_full_clip_crash_v4"
 LOCATION_VISUAL_REVIEW_VERSION = "cosmos3_location_text_v2"
 COMPATIBLE_REVIEW_VERSIONS = {
     "cosmos3_full_clip_crash_v1",
     "cosmos3_full_clip_crash_v2",
+    "cosmos3_full_clip_crash_v3",
+    CRASH_REVIEW_VERSION,
+}
+# Reviews that do not need redoing: v3 differs from v4 only in the prompt's
+# example, and its crash_type is re-checked by the taxonomy stage.
+UP_TO_DATE_REVIEW_VERSIONS = {
+    "cosmos3_full_clip_crash_v3",
     CRASH_REVIEW_VERSION,
 }
 CRASH_TYPES = {
@@ -751,7 +760,9 @@ use zero confidence; zero means the answer is unusable and will be retried.
 
 The fields must be logically consistent:
 * Use is_crash=true and crash_type=near_collision when evasive action narrowly
-  prevents an impact.
+  prevents an impact, and only then. For an actual collision choose the
+  crash_type that matches the impact (rear_end, side_impact, head_on,
+  rollover, pedestrian, cyclist, multi_vehicle, single_vehicle, other).
 * Use crash_type=unknown and impact_time_seconds=null when is_crash=false.
 * Select exactly one allowed value for every categorical field. Never copy a
   list of choices or the | character into a value.
@@ -764,26 +775,27 @@ The fields must be logically consistent:
 
 Upload title for crash context only: {title}
 
-Return JSON only:
+Return one JSON object only, with exactly these keys. Each <...> stands for
+your own answer from the allowed values below; there is no default answer.
 {{
-  "is_crash": true,
-  "confidence": 0.95,
-  "impact_time_seconds": null,
-  "short_description": "one factual sentence",
-  "crash_type": "near_collision",
-  "camera_view": "dashcam",
-  "road_user_count": null,
-  "road_users": ["car"],
-  "road_environment": "motorway",
-  "time_of_day": "day",
-  "weather": "clear",
-  "road_condition": "dry",
-  "visible_outcomes": ["evasive manoeuvre"],
-  "embedded_location_text": [],
-  "locality": null,
-  "state": null,
-  "country": null,
-  "location_evidence": "none"
+  "is_crash": <true or false>,
+  "confidence": <number between 0 and 1>,
+  "impact_time_seconds": <seconds into this clip, or null>,
+  "short_description": "<one factual sentence>",
+  "crash_type": "<one crash_type value>",
+  "camera_view": "<one camera_view value>",
+  "road_user_count": <integer, or null>,
+  "road_users": ["<unique road user types>"],
+  "road_environment": "<one road_environment value>",
+  "time_of_day": "<one time_of_day value>",
+  "weather": "<one weather value>",
+  "road_condition": "<one road_condition value>",
+  "visible_outcomes": ["<short visible outcomes>"],
+  "embedded_location_text": ["<short geographic text seen in the frames>"],
+  "locality": <string or null>,
+  "state": <string or null>,
+  "country": <string or null>,
+  "location_evidence": "<one location_evidence value>"
 }}
 
 Allowed crash_type values: rear_end, side_impact, head_on, rollover,
@@ -833,9 +845,36 @@ def _valid_video(path: Path) -> bool:
     return result.returncode == 0 and "video" in result.stdout
 
 
+def _shared_video(video_id: str) -> Optional[Path]:
+    """A valid copy of the video in one of SHARED_VIDEO_DIRS, if any."""
+    for folder in settings.SHARED_VIDEO_DIRS:
+        for suffix in (".mp4", ".mkv", ".webm", ".mov"):
+            path = folder / f"{video_id}{suffix}"
+            if path.is_file() and _valid_video(path):
+                return path
+    return None
+
+
+def _link_or_copy(source: Path, destination: Path) -> None:
+    """Hard-link when possible (same file system), otherwise copy."""
+    temporary = destination.with_name(destination.name + ".part")
+    temporary.unlink(missing_ok=True)
+    try:
+        os.link(source, temporary)
+    except OSError:
+        shutil.copy2(source, temporary)
+    os.replace(temporary, destination)
+
+
 def download_video(video_id: str) -> Path:
     settings.TEMP_DIR.mkdir(parents=True, exist_ok=True)
     settings.VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+    shared = _shared_video(video_id)
+    if shared is not None:
+        # Deleting the processing copy later never touches the shared file.
+        destination = settings.VIDEO_DIR / f"{video_id}{shared.suffix.lower()}"
+        _link_or_copy(shared, destination)
+        return destination
     output = settings.TEMP_DIR / f"{video_id}.%(ext)s"
     command = [
         "yt-dlp",
@@ -1511,7 +1550,7 @@ def run_visual_stage(state: Dict[str, Any], after_video: Optional[Any] = None) -
         and record.get("status") not in SKIPPED_VISUAL_STATUSES
         and (
             record.get("status") not in {"complete", "visual_rejected"}
-            or record.get("visual_review_version") != CRASH_REVIEW_VERSION
+            or record.get("visual_review_version") not in UP_TO_DATE_REVIEW_VERSIONS
             or has_visual_review_errors(record)
         )
     ][: settings.MAX_VIDEOS_PER_RUN]

@@ -11,6 +11,7 @@ from car_crash_pipeline.crash_taxonomy import (
     crash_taxonomy_pending,
     normalise_taxonomy_response,
     run_crash_taxonomy_stage,
+    taxonomy_prompt,
     validate_taxonomy_response,
 )
 from car_crash_pipeline.output_writer import iter_mapping_rows, iter_rows
@@ -19,7 +20,9 @@ from car_crash_pipeline.output_writer import iter_mapping_rows, iter_rows
 class CrashTaxonomyTests(unittest.TestCase):
     def test_motor_vehicle_collision_uses_mmucc_c7_and_c9(self) -> None:
         data = {
+            "impact_description": "The front of a car strikes the rear of a van.",
             "event_kind": "collision",
+            "crash_type": "rear_end",
             "manner_of_collision": "front_to_rear_or_rear_to_front",
             "first_harmful_event": "motor_vehicle_in_transport",
             "sequence_of_events": ["motor_vehicle_in_transport"],
@@ -53,7 +56,9 @@ class CrashTaxonomyTests(unittest.TestCase):
 
     def test_non_motor_vehicle_first_event_requires_not_collision_manner(self) -> None:
         valid = {
+            "impact_description": "A car strikes a pedestrian crossing the road.",
             "event_kind": "collision",
+            "crash_type": "pedestrian",
             "manner_of_collision": (
                 "not_collision_with_motor_vehicle_in_transport"
             ),
@@ -69,9 +74,33 @@ class CrashTaxonomyTests(unittest.TestCase):
             "non_motor_vehicle_first_harmful_event_requires_not_collision_manner",
         )
 
+    def test_crash_type_must_agree_with_event_kind(self) -> None:
+        data = {
+            "impact_description": "The front of a car strikes the rear of a van.",
+            "event_kind": "collision",
+            "crash_type": "near_collision",
+            "manner_of_collision": "front_to_rear_or_rear_to_front",
+            "first_harmful_event": "motor_vehicle_in_transport",
+            "sequence_of_events": ["motor_vehicle_in_transport"],
+        }
+
+        self.assertEqual(
+            validate_taxonomy_response(data),
+            "crash_type_near_collision_must_match_event_kind",
+        )
+
+    def test_prompt_has_no_copyable_example_answer(self) -> None:
+        prompt = taxonomy_prompt({"duration_seconds": 5.0}, {"title": "t"})
+
+        self.assertNotIn('"front_to_rear_or_rear_to_front"', prompt)
+        self.assertNotIn('"motor_vehicle_in_transport"', prompt)
+        self.assertIn("impact_description", prompt)
+
     def test_near_collision_has_no_mmucc_harmful_event(self) -> None:
         data = {
+            "impact_description": "A car brakes hard and stops short of a truck.",
             "event_kind": "near_collision",
+            "crash_type": "near_collision",
             "manner_of_collision": None,
             "first_harmful_event": None,
             "sequence_of_events": [],
@@ -90,7 +119,9 @@ class CrashTaxonomyTests(unittest.TestCase):
         self,
     ) -> None:
         data = {
+            "impact_description": "A car leaves the road and rolls over.",
             "event_kind": "collision",
+            "crash_type": "rollover",
             "manner_of_collision": (
                 "not_collision_with_motor_vehicle_in_transport"
             ),

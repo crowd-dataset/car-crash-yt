@@ -1,0 +1,176 @@
+{
+  "crash": [
+    {
+      "id": "event_kind",
+      "model_field": "event_kind",
+      "text": "What does the clip show?",
+      "options": [
+        ["collision", "A collision (contact happens)"],
+        ["near_collision", "A near-collision (no contact)"],
+        ["none", "No crash or near-collision"],
+        ["not_real_traffic", "Not real traffic footage (game, animation, studio)"]
+      ]
+    },
+    {
+      "id": "event_in_clip",
+      "text": "Is the whole event inside the clip?",
+      "show_if": {"event_kind": ["collision", "near_collision"]},
+      "options": [
+        ["complete", "Yes, start to end"],
+        ["cut_off", "Partly, it is cut off"]
+      ]
+    },
+    {
+      "id": "manner_of_collision",
+      "model_field": "manner_of_collision",
+      "text": "Manner of collision (first contact between vehicles)",
+      "show_if": {"event_kind": ["collision"]},
+      "options": [
+        ["front_to_rear_or_rear_to_front", "Front to rear", "the front of one vehicle strikes the rear of another (rear-end)"],
+        ["front_to_front", "Front to front", "the fronts of two vehicles strike each other (head-on)"],
+        ["angle", "Angle", "the front of one vehicle strikes the side of another (T-bone, most intersection crashes)"],
+        ["sideswipe_same_direction", "Sideswipe, same direction", "the sides of two vehicles moving the same way touch"],
+        ["sideswipe_opposite_direction", "Sideswipe, opposite direction", "the sides of two vehicles moving opposite ways touch"],
+        ["rear_to_side_or_side_to_rear", "Rear to side", "the rear of one vehicle strikes the side of another"],
+        ["rear_to_rear", "Rear to rear", "the rears of two vehicles strike each other"],
+        ["not_collision_with_motor_vehicle_in_transport", "Not with another moving vehicle", "pedestrian, cyclist, barrier, parked car, rollover, animal"],
+        ["other", "Other", "moving vehicles, but none of the above"],
+        ["unknown", "Can't tell", "the moment of impact cannot be seen"]
+      ]
+    },
+    {
+      "id": "crash_type",
+      "model_field": "crash_type",
+      "text": "Which best describes the crash?",
+      "show_if": {"event_kind": ["collision"]},
+      "options": [
+        ["rear_end", "Rear-end"],
+        ["side_impact", "Side impact"],
+        ["head_on", "Head-on"],
+        ["rollover", "Rollover"],
+        ["pedestrian", "Pedestrian struck"],
+        ["cyclist", "Cyclist struck"],
+        ["single_vehicle", "Single vehicle (barrier, object, off-road)"],
+        ["multi_vehicle", "Multi-vehicle pile-up"],
+        ["other", "Other"],
+        ["unknown", "Can't tell"]
+      ]
+    },
+    {
+      "id": "camera_view",
+      "model_field": "camera_view",
+      "text": "Camera",
+      "options": [
+        ["dashcam", "Dashcam"],
+        ["cctv", "CCTV / traffic camera"],
+        ["action_camera", "Helmet / action camera"],
+        ["handheld", "Handheld phone"],
+        ["broadcast", "TV / news"],
+        ["aerial", "Drone"],
+        ["other", "Other"]
+      ]
+    },
+    {
+      "id": "time_of_day",
+      "model_field": "time_of_day",
+      "text": "Time of day",
+      "options": [
+        ["day", "Day"],
+        ["night", "Night"],
+        ["dawn_dusk", "Dawn / dusk"],
+        ["unknown", "Can't tell"]
+      ]
+    },
+    {
+      "id": "weather",
+      "model_field": "weather",
+      "text": "Weather",
+      "options": [
+        ["clear", "Clear / dry"],
+        ["rain", "Rain"],
+        ["snow", "Snow"],
+        ["fog", "Fog"],
+        ["unknown", "Can't tell"]
+      ]
+    },
+    {
+      "id": "road_environment",
+      "model_field": "road_environment",
+      "text": "Where does it happen?",
+      "options": [
+        ["motorway", "Motorway / highway"],
+        ["urban", "Urban street"],
+        ["rural", "Rural road"],
+        ["junction", "Junction / intersection"],
+        ["roundabout", "Roundabout"],
+        ["parking", "Parking area"],
+        ["other", "Other"]
+      ]
+    },
+    {
+      "id": "location",
+      "text": "The pipeline places this clip in <b>{location}</b>. Does what you see agree?",
+      "show_if_location": true,
+      "options": [
+        ["consistent", "Yes, or nothing contradicts it"],
+        ["contradicted", "No, something contradicts it"],
+        ["cant_tell", "Can't tell"]
+      ]
+    }
+  ],
+  "walking": [
+    {
+      "id": "content",
+      "model_field": "content",
+      "text": "What does the clip mostly show?",
+      "options": [
+        ["walking", "First-person walk (camera carried by a pedestrian)"],
+        ["vehicle", "Filmed from a vehicle"],
+        ["drone_aerial", "Drone / aerial"],
+        ["static", "Static camera"],
+        ["other", "Ads, intro, title cards or other"]
+      ]
+    },
+    {
+      "id": "time_of_day",
+      "model_field": "time_of_day",
+      "text": "Time of day",
+      "show_if": {"content": ["walking"]},
+      "options": [
+        ["day", "Day"],
+        ["night", "Night"],
+        ["dawn_dusk", "Dawn / dusk"],
+        ["unknown", "Can't tell"]
+      ]
+    },
+    {
+      "id": "walking_environment",
+      "model_field": "walking_environment",
+      "text": "Main environment (pick Mixed if it changes a lot)",
+      "show_if": {"content": ["walking"]},
+      "options": [
+        ["street", "Street"],
+        ["square_plaza", "Square / plaza"],
+        ["market", "Market"],
+        ["park_nature", "Park / nature"],
+        ["trail", "Trail"],
+        ["waterfront", "Waterfront"],
+        ["beach", "Beach"],
+        ["indoor", "Indoor"],
+        ["transport_hub", "Station / transport hub"],
+        ["mixed", "Mixed"],
+        ["other", "Other"]
+      ]
+    },
+    {
+      "id": "location",
+      "text": "The pipeline places this clip in <b>{location}</b>. Does what you see agree?",
+      "show_if_location": true,
+      "options": [
+        ["consistent", "Yes, or nothing contradicts it"],
+        ["contradicted", "No, something contradicts it"],
+        ["cant_tell", "Can't tell"]
+      ]
+    }
+  ]
+}

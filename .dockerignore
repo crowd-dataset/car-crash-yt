@@ -19,3 +19,5 @@ geocode_cache.json
 _output
 figures
 paper_iv2027
+validation/data
+validation/results

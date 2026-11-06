@@ -35,3 +35,7 @@ geocode_cache.json
 _output
 collision_frames
 figures
+
+# Validation answers (reviewer names), snippets and results stay local
+validation/data/
+validation/results/

@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Clip Validation</title>
+<style>
+  :root {
+    --bg: #f6f6f3; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66;
+    --line: #dcdcd6; --accent: #0072B2; --accent-ink: #ffffff;
+    --crash: #D55E00; --walking: #0072B2; --warn: #9a5b00; --warn-bg: #fff4e0;
+    --chosen-bg: #e6f1f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161615; --panel: #20201e; --ink: #ececea; --muted: #a2a29c;
+      --line: #3a3a37; --accent: #56B4E9; --accent-ink: #0b0b0a;
+      --crash: #f08a4b; --walking: #56B4E9; --warn: #f0c070; --warn-bg: #3a2e18;
+      --chosen-bg: #1d3445;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .hidden { display: none !important; }
+
+  /* start / message screens */
+  .screen { max-width: 520px; margin: 12vh auto; padding: 0 16px; }
+  .screen h1 { font-size: 24px; margin: 0 0 8px; }
+  .screen p { color: var(--muted); margin: 0 0 20px; }
+  .screen input { width: 100%; padding: 12px; font: inherit; color: var(--ink);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  .primary { background: var(--accent); color: var(--accent-ink); border: 0;
+    border-radius: 8px; padding: 11px 20px; font-weight: 600; }
+  .primary:disabled { opacity: .35; cursor: not-allowed; }
+  .ghost { background: transparent; border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 14px; }
+  .error { color: var(--crash); margin-top: 12px; min-height: 1.4em; }
+  .spinner { width: 28px; height: 28px; border: 3px solid var(--line);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite;
+    margin-bottom: 16px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* review layout */
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 20px;
+    border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  header .who { font-weight: 600; }
+  header .count { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .bar { flex: 1; min-width: 120px; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .bar span { display: block; height: 100%; background: var(--accent); }
+  main { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
+    gap: 20px; padding: 20px; max-width: 1500px; margin: 0 auto; }
+  .video-col { position: sticky; top: 20px; align-self: start; }
+  .frame { position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: 10px; overflow: hidden; }
+  .frame > div, .frame iframe, .frame video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .video-tools { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+  .video-tools .info { color: var(--muted); font-size: 13px; margin-right: auto; font-variant-numeric: tabular-nums; }
+  .notice { margin-top: 10px; padding: 10px 12px; border-radius: 8px;
+    background: var(--warn-bg); color: var(--warn); font-size: 14px; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 4px; color: #fff; }
+  .tag.crash { background: var(--crash); color: var(--accent-ink); }
+  .tag.walking { background: var(--walking); color: var(--accent-ink); }
+
+  .questions { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .editing { margin-bottom: 14px; }
+  .q { padding: 12px 0; border-top: 1px solid var(--line); }
+  .q:first-of-type { border-top: 0; padding-top: 4px; }
+  .q h3 { font-size: 15px; margin: 0 0 8px; font-weight: 600; }
+  .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .opt { background: transparent; border: 1px solid var(--line); border-radius: 8px;
+    padding: 7px 11px; text-align: left; }
+  .opt:hover { border-color: var(--accent); }
+  .opt.chosen { border-color: var(--accent); background: var(--chosen-bg); box-shadow: inset 0 0 0 1px var(--accent); }
+  .opt small { display: block; color: var(--muted); font-size: 12px; line-height: 1.3; max-width: 260px; }
+  .opts.long .opt { flex: 1 1 calc(50% - 6px); }
+  textarea { width: 100%; min-height: 54px; margin-top: 6px; padding: 8px; font: inherit;
+    color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; resize: vertical; }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
+  .actions .primary { margin-left: auto; }
+
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; padding: 12px 16px; }
+    .video-col { position: static; }
+    header { padding: 10px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<section id="start" class="screen">
+  <h1>Clip validation</h1>
+  <p>Type your name to start. Use the same name every time: you will continue where you stopped.</p>
+  <form id="start-form">
+    <input id="name" autocomplete="name" placeholder="Your name" required>
+    <div style="margin-top:14px"><button class="primary" type="submit">Start</button></div>
+    <div class="error" id="start-error"></div>
+  </form>
+</section>
+
+<section id="message" class="screen hidden">
+  <div class="spinner" id="message-spinner"></div>
+  <h1 id="message-title"></h1>
+  <p id="message-text"></p>
+</section>
+
+<section id="review" class="hidden">
+  <header>
+    <span class="who" id="who"></span>
+    <span class="count" id="count"></span>
+    <div class="bar"><span id="bar"></span></div>
+  </header>
+  <main>
+    <div class="video-col">
+      <div class="frame"><div id="player"></div><video id="local" class="hidden" controls playsinline muted></video></div>
+      <div class="video-tools">
+        <span class="info" id="clip-info"></span>
+        <button class="ghost" id="replay" type="button">Replay clip</button>
+        <button class="ghost" id="cannot-play" type="button">Video won't play</button>
+      </div>
+      <div class="notice hidden" id="video-notice"></div>
+    </div>
+    <div>
+      <div class="notice editing hidden" id="editing">You are changing an earlier answer.
+        <button class="ghost" id="to-current" type="button" style="margin-left:8px">Back to current clip</button></div>
+      <form class="questions" id="form">
+        <div id="qs"></div>
+        <div class="q">
+          <h3>Note <span style="color:var(--muted);font-weight:400">(optional)</span></h3>
+          <textarea id="note" placeholder="Anything unusual about this clip"></textarea>
+        </div>
+        <div class="actions">
+          <button class="ghost" id="previous" type="button">&larr; Previous</button>
+          <button class="primary" id="submit" type="submit" disabled>Save and next</button>
+        </div>
+      </form>
+    </div>
+  </main>
+</section>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch {} },
+};
+
+let QUESTIONS = null;
+let slot = null;
+let current = null;        // clip on screen
+let values = {};
+let loadedAt = 0;
+let history = [];          // answered clip ids, oldest first
+let historyIndex = null;   // position in history while editing, else null
+let player = null, playerReady = null, playTimer = null, waitTimer = null;
+
+async function api(path, body) {
+  const response = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Server error ${response.status}`);
+  return data;
+}
+
+/* ---------- YouTube ---------- */
+function loadYouTube() {
+  playerReady = new Promise((resolve, reject) => {
+    window.onYouTubeIframeAPIReady = () => {
+      player = new YT.Player("player", {
+        playerVars: { playsinline: 1, rel: 0, modestbranding: 1, mute: 1, autoplay: 1, origin: location.origin },
+        events: {
+          onReady: () => resolve(player),
+          onError: (event) => youtubeFailed(`YouTube error ${event.data}`),
+          onStateChange: (event) => {
+            // Buffering also comes before an error, so only playing counts.
+            if (event.data === YT.PlayerState.PLAYING) {
+              clearTimeout(playTimer);
+              failuresInRow = 0;
+              $("video-notice").classList.add("hidden");
+            }
+          },
+        },
+      });
+    };
+    const script = document.createElement("script");
+    script.src = "https://www.youtube.com/iframe_api";
+    script.onerror = () => reject(new Error("YouTube could not be reached"));
+    document.head.appendChild(script);
+  });
+  playerReady.catch(() => {});
+}
+
+async function showYouTube(item) {
+  $("local").pause(); $("local").classList.add("hidden");
+  $("player").classList.remove("hidden");
+  try {
+    await playerReady;
+  } catch (error) {
+    return youtubeFailed(error.message);
+  }
+  document.querySelector(".frame iframe")?.classList.remove("hidden");
+  player.loadVideoById({ videoId: item.video_id, startSeconds: item.play_start, endSeconds: item.play_end });
+  clearTimeout(playTimer);
+  playTimer = setTimeout(() => {
+    const notice = $("video-notice");
+    notice.textContent = "Still not playing? Press “Video won't play” and this clip will come back at the end, downloaded.";
+    notice.classList.remove("hidden");
+  }, 20000);
+}
+
+function showLocal(item) {
+  clearTimeout(playTimer);
+  try { player && player.stopVideo(); } catch {}
+  document.querySelector(".frame iframe")?.classList.add("hidden");
+  const video = $("local");
+  video.classList.remove("hidden");
+  video.src = item.media_url;
+  video.onerror = () => {
+    const notice = $("video-notice");
+    notice.textContent = "The downloaded copy does not play either. Press “Video won't play” to skip it.";
+    notice.classList.remove("hidden");
+  };
+  video.play().catch(() => {});
+}
+
+// When every clip fails, the browser is the problem (blocked embeds or no
+// network), not the videos: stop moving clips to the end after a few.
+const MAX_FAILURES_IN_ROW = 3;
+let failuresInRow = 0;
+let deferring = false;
+async function youtubeFailed(reason, byReviewer = false) {
+  if (!current || current.source !== "youtube" || deferring || historyIndex !== null) return;
+  const notice = $("video-notice");
+  if (!byReviewer && ++failuresInRow > MAX_FAILURES_IN_ROW) {
+    notice.textContent = "YouTube is not playing any videos in this browser. Check your internet " +
+      "connection or open this page in Chrome, Safari or Firefox. If only this clip fails, press \u201cVideo won't play\u201d.";
+    notice.classList.remove("hidden");
+    return;
+  }
+  deferring = true;
+  notice.textContent = "This video does not play on YouTube. It moves to the end of your list and is downloaded in the background.";
+  notice.classList.remove("hidden");
+  try {
+    const next = await api("/api/defer", { slot, id: current.id, reason });
+    setTimeout(() => { deferring = false; handleNext(next); }, 1500);
+  } catch (error) {
+    deferring = false;
+    notice.textContent = error.message;
+  }
+}
+
+/* ---------- screens ---------- */
+function showScreen(name) {
+  for (const id of ["start", "message", "review"]) $(id).classList.toggle("hidden", id !== name);
+}
+
+function showMessage(title, text, busy) {
+  $("message-title").textContent = title;
+  $("message-text").textContent = text;
+  $("message-spinner").classList.toggle("hidden", !busy);
+  showScreen("message");
+}
+
+function updateProgress(data) {
+  $("count").textContent = `${data.done} of ${data.total} done`;
+  $("bar").style.width = `${data.total ? (100 * data.done / data.total) : 0}%`;
+}
+
+function handleNext(data) {
+  clearTimeout(waitTimer);
+  historyIndex = null;
+  if (data.state === "item") return showItem(data.item, data);
+  try { player && player.stopVideo(); } catch {}
+  $("local").pause();
+  if (data.state === "waiting") {
+    showMessage("Downloading the last clips",
+      `${data.pending} clip${data.pending > 1 ? "s" : ""} did not play on YouTube and ${data.pending > 1 ? "are" : "is"} being downloaded. This page continues by itself.`, true);
+    waitTimer = setTimeout(loadNext, 5000);
+    return;
+  }
+  showMessage("All done, thank you!", `You reviewed ${data.done} of ${data.total} clips. You can close this page.`, false);
+}
+
+async function loadNext() {
+  try {
+    handleNext(await api(`/api/next?slot=${slot}`));
+  } catch (error) {
+    showMessage("Cannot reach the server", `${error.message}. Retrying…`, true);
+    waitTimer = setTimeout(loadNext, 5000);
+  }
+}
+
+function fmt(seconds) {
+  const s = Math.round(seconds);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return (h ? `${h}:${String(m).padStart(2, "0")}` : `${m}`) + `:${String(r).padStart(2, "0")}`;
+}
+
+function showItem(item, data) {
+  showScreen("review");
+  current = item;
+  values = item.answers ? { ...item.answers } : {};
+  loadedAt = Date.now();
+  updateProgress(data);
+  $("video-notice").classList.add("hidden");
+  $("editing").classList.toggle("hidden", historyIndex === null);
+  $("cannot-play").classList.toggle("hidden", historyIndex !== null);
+  $("note").value = item.note || "";
+  const length = item.play_end - item.play_start;
+  $("clip-info").innerHTML = `<span class="tag ${item.dataset}">${item.dataset}</span> ` +
+    `${fmt(item.play_start)}–${fmt(item.play_end)} (${fmt(length)})` +
+    (item.source === "local" ? " · downloaded copy" : "");
+  renderQuestions();
+  window.scrollTo({ top: 0 });
+  if (item.source === "local") showLocal(item); else showYouTube(item);
+}
+
+/* ---------- questions ---------- */
+function visible(question) {
+  if (question.show_if_location && !current.location) return false;
+  for (const [id, allowed] of Object.entries(question.show_if || {})) {
+    if (!allowed.includes(values[id])) return false;
+  }
+  return true;
+}
+
+function escapeHtml(text) {
+  return text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+function renderQuestions() {
+  const box = $("qs");
+  box.innerHTML = "";
+  for (const question of QUESTIONS[current.dataset]) {
+    if (!visible(question)) continue;
+    const section = document.createElement("div");
+    section.className = "q";
+    const text = question.text.replace("{location}", escapeHtml(current.location || ""));
+    const hasHints = question.options.some((option) => option[2]);
+    section.innerHTML = `<h3>${text}</h3><div class="opts${hasHints ? " long" : ""}"></div>`;
+    const opts = section.querySelector(".opts");
+    for (const [value, label, hint] of question.options) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "opt" + (values[question.id] === value ? " chosen" : "");
+      button.innerHTML = escapeHtml(label) + (hint ? `<small>${escapeHtml(hint)}</small>` : "");
+      button.onclick = () => { values[question.id] = value; renderQuestions(); };
+      opts.appendChild(button);
+    }
+    box.appendChild(section);
+  }
+  const shown = QUESTIONS[current.dataset].filter(visible);
+  $("submit").disabled = !shown.every((question) => values[question.id]);
+  $("previous").disabled = historyIndex === 0 || history.length === 0;
+}
+
+$("form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const shown = QUESTIONS[current.dataset].filter(visible);
+  const answers = Object.fromEntries(shown.map((question) => [question.id, values[question.id]]));
+  $("submit").disabled = true;
+  try {
+    const next = await api("/api/answer", {
+      slot, id: current.id, values: answers, note: $("note").value.trim(),
+      seconds: Math.round((Date.now() - loadedAt) / 1000), source: current.source,
+    });
+    history = (await api(`/api/history?slot=${slot}`)).answered;
+    handleNext(next);
+  } catch (error) {
+    alert(error.message);
+    $("submit").disabled = false;
+  }
+});
+
+/* ---------- navigation ---------- */
+async function openHistory(index) {
+  try {
+    const data = await api(`/api/item?slot=${slot}&id=${encodeURIComponent(history[index])}`);
+    clearTimeout(waitTimer);
+    historyIndex = index;
+    showItem(data.item, data);
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+$("previous").onclick = async () => {
+  if (!history.length) history = (await api(`/api/history?slot=${slot}`)).answered;
+  const index = historyIndex === null ? history.length - 1 : historyIndex - 1;
+  if (index >= 0) openHistory(index);
+};
+$("to-current").onclick = loadNext;
+$("replay").onclick = () => {
+  if (!current) return;
+  if (current.source === "local") { $("local").currentTime = 0; $("local").play().catch(() => {}); }
+  else if (player) player.loadVideoById({ videoId: current.video_id, startSeconds: current.play_start, endSeconds: current.play_end });
+};
+$("cannot-play").onclick = async () => {
+  if (current.source === "youtube") return youtubeFailed("reviewer pressed: video won't play", true);
+  if (!confirm("Skip this clip? The downloaded copy does not play either.")) return;
+  try { handleNext(await api("/api/defer", { slot, id: current.id, reason: "local copy does not play" })); }
+  catch (error) { alert(error.message); }
+};
+
+/* ---------- start ---------- */
+$("name").value = store.get("validation-name") || "";
+$("start-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("start-error").textContent = "";
+  try {
+    const data = await api("/api/start", { name: $("name").value });
+    slot = data.slot;
+    store.set("validation-name", data.name);
+    $("who").textContent = data.name;
+    history = (await api(`/api/history?slot=${slot}`)).answered;
+    loadNext();
+  } catch (error) {
+    $("start-error").textContent = error.message;
+  }
+});
+
+(async () => {
+  QUESTIONS = await (await fetch("/questions.json")).json();
+  loadYouTube();
+})();
+</script>
+</body>
+</html>

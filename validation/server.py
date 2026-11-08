@@ -2,9 +2,11 @@
 
 Each reviewer gets one half of sample.json, so nobody labels a clip twice.
 Progress is saved after every answer, and a reviewer who comes back with the
-same name continues at the first clip they have not answered. Clips that do not
-play on YouTube move to the end of that reviewer's queue while the snippet is
-cut from a local copy (--video-dir) or downloaded with yt-dlp in the background.
+same name continues at the first clip they have not answered. Clips play from
+YouTube; one that does not play moves to the end of that reviewer's queue while
+just that snippet is downloaded with yt-dlp in the background (or, if that
+fails, cut from a local copy in --video-dir). The snippet is deleted as soon as
+the clip is answered.
 
     python validation/server.py                  # http://localhost:8765
     python validation/server.py --host 0.0.0.0   # reachable from other machines
@@ -106,15 +108,10 @@ def fetch_snippet(item_id: str) -> None:
     partial = target.with_name(target.stem + ".part.mp4")
     partial.unlink(missing_ok=True)
     start, end = item["play_start"], item["play_end"]
-    local = find_local_video(item["video_id"])
-    if local:
-        command = [
-            "ffmpeg", "-y", "-loglevel", "error", "-ss", f"{start:.3f}",
-            "-to", f"{end:.3f}", "-i", str(local), "-vf", "scale=-2:'min(720,ih)'",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "26",
-            "-c:a", "aac", "-movflags", "+faststart", str(partial),
-        ]
-    else:
+    # Only the clip's own seconds are fetched from YouTube; a local copy of the
+    # full video is the fallback.
+    attempts = []
+    try:
         command = yt_dlp_command() + [
             "--quiet", "--no-warnings", "--no-playlist",
             "--extractor-args", "youtube:player_client=default,web_embedded,mweb",
@@ -126,20 +123,46 @@ def fetch_snippet(item_id: str) -> None:
         if OPTIONS.cookies:
             command += ["--cookies", str(OPTIONS.cookies)]
         command.append(f"https://www.youtube.com/watch?v={item['video_id']}")
-    try:
-        result = subprocess.run(
-            command, capture_output=True, text=True, timeout=DOWNLOAD_TIMEOUT
-        )
-        if result.returncode != 0 or not partial.is_file() or partial.stat().st_size == 0:
-            raise RuntimeError((result.stderr or result.stdout).strip()[-400:] or "no output file")
-        os.replace(partial, target)
-        outcome = {"status": "ready", "source": "local" if local else "yt-dlp"}
-    except Exception as error:  # noqa: BLE001 - every failure ends the attempt
-        partial.unlink(missing_ok=True)
+        attempts.append(("yt-dlp", command))
+    except RuntimeError as error:
         outcome = {"status": "failed", "error": str(error)}
+    local = find_local_video(item["video_id"])
+    if local:
+        attempts.append(("local", [
+            "ffmpeg", "-y", "-loglevel", "error", "-ss", f"{start:.3f}",
+            "-to", f"{end:.3f}", "-i", str(local), "-vf", "scale=-2:'min(720,ih)'",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "26",
+            "-c:a", "aac", "-movflags", "+faststart", str(partial),
+        ]))
+    errors = []
+    for source, command in attempts:
+        partial.unlink(missing_ok=True)
+        try:
+            result = subprocess.run(
+                command, capture_output=True, text=True, timeout=DOWNLOAD_TIMEOUT
+            )
+            if result.returncode != 0 or not partial.is_file() or partial.stat().st_size == 0:
+                raise RuntimeError((result.stderr or result.stdout).strip()[-400:] or "no output file")
+            os.replace(partial, target)
+            outcome = {"status": "ready", "source": source}
+            break
+        except Exception as error:  # noqa: BLE001 - every failure ends the attempt
+            partial.unlink(missing_ok=True)
+            errors.append(f"{source}: {error}")
+    else:
+        if errors:
+            outcome = {"status": "failed", "error": " | ".join(errors)[-800:]}
     with LOCK:
         STATE["downloads"][item_id] = {**outcome, "finished": time.time()}
         save_state()
+
+
+def drop_snippet(item_id: str) -> None:
+    """Delete a clip's downloaded snippet once it is no longer needed."""
+    download = STATE["downloads"].get(item_id)
+    if download and download.get("status") == "ready":
+        snippet_path(item_id).unlink(missing_ok=True)
+        download["status"] = "deleted"
 
 
 def request_snippet(item_id: str) -> None:
@@ -157,7 +180,7 @@ def client_item(reviewer: dict, item_id: str) -> dict:
     item = SAMPLE["items"][item_id]
     deferred = item_id in reviewer["deferred"]
     download = STATE["downloads"].get(item_id, {})
-    local = deferred and download.get("status") == "ready"
+    local = deferred and download.get("status") == "ready" and snippet_path(item_id).is_file()
     queue = reviewer["queue"]
     return {
         "id": item_id,
@@ -340,6 +363,7 @@ class Handler(BaseHTTPRequestHandler):
                 }
                 if item_id not in reviewer["answer_order"]:
                     reviewer["answer_order"].append(item_id)
+                drop_snippet(item_id)
                 save_state()
                 return self.send_json(next_item(reviewer))
             if url.path == "/api/defer":
@@ -349,6 +373,7 @@ class Handler(BaseHTTPRequestHandler):
                         STATE["downloads"].get(item_id, {}).get("status") == "ready":
                     # The downloaded snippet does not play either.
                     reviewer["unavailable"][item_id] = "local snippet did not play"
+                    drop_snippet(item_id)
                 else:
                     reviewer["deferred"][item_id] = str(body.get("reason") or "")[:200]
                     reviewer["queue"].remove(item_id)

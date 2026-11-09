@@ -39,24 +39,6 @@
       ]
     },
     {
-      "id": "crash_type",
-      "model_field": "crash_type",
-      "text": "Which best describes the crash?",
-      "show_if": {"event_kind": ["collision"]},
-      "options": [
-        ["rear_end", "Rear-end"],
-        ["side_impact", "Side impact"],
-        ["head_on", "Head-on"],
-        ["rollover", "Rollover"],
-        ["pedestrian", "Pedestrian struck"],
-        ["cyclist", "Cyclist struck"],
-        ["single_vehicle", "Single vehicle (barrier, object, off-road)"],
-        ["multi_vehicle", "Multi-vehicle pile-up"],
-        ["other", "Other"],
-        ["unknown", "Can't tell"]
-      ]
-    },
-    {
       "id": "camera_view",
       "model_field": "camera_view",
       "text": "Camera",

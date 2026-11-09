@@ -184,6 +184,10 @@ function loadYouTube() {
               failuresInRow = 0;
               $("video-notice").classList.add("hidden");
             }
+            // Loop the clip: start it again from the clip start when it ends.
+            if (event.data === YT.PlayerState.ENDED && current && current.source === "youtube") {
+              player.loadVideoById({ videoId: current.video_id, startSeconds: current.play_start, endSeconds: current.play_end });
+            }
           },
         },
       });
@@ -221,6 +225,7 @@ function showLocal(item) {
   const video = $("local");
   video.classList.remove("hidden");
   video.src = item.media_url;
+  video.loop = true;
   video.onerror = () => {
     const notice = $("video-notice");
     notice.textContent = "The downloaded copy does not play either. Press “Video won't play” to skip it.";

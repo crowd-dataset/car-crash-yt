@@ -78,22 +78,6 @@ How to decide:
   "Not with another moving vehicle", even when it looks like a rear-end.
 - **Several impacts:** judge the **first** contact between two moving vehicles.
 
-### Which best describes the crash?
-
-This is a simpler description of the whole crash. It may differ from the
-manner of collision: a car that rear-ends a queue causing a pile-up is
-**Multi-vehicle pile-up** here and **Front to rear** above.
-
-| Answer | Choose it when |
-|---|---|
-| Rear-end | One vehicle drives into the back of another. |
-| Side impact | One vehicle hits the side of another (T-bone, angle, sideswipe). |
-| Head-on | Front meets front. |
-| Rollover | A vehicle turns onto its side or roof; choose this even if it hit something first. |
-| Pedestrian struck / Cyclist struck | A person on foot or on a bicycle is hit. |
-| Single vehicle | Only one vehicle is involved: it hits a barrier, pole, tree or leaves the road. |
-| Multi-vehicle pile-up | Three or more vehicles are involved in a chain. |
-
 ### Camera
 
 **Dashcam**: fixed inside or on a vehicle, front or rear. **CCTV / traffic

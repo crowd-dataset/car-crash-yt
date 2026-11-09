@@ -25,7 +25,7 @@ CANT_TELL = {"unknown", "cant_tell"}
 SYNONYMS = {
     "road_environment": {
         "intersection": "junction", "highway": "motorway",
-        "residential street": "urban", "mountain road": "rural",
+        "residential street": "urban", "residential": "urban", "mountain road": "rural",
     },
     "weather": {
         "snowy": "snow", "foggy": "fog", "hazy": "fog", "overcast": "clear",

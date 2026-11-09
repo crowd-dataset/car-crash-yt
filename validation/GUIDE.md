@@ -130,12 +130,19 @@ a roundabout is **Roundabout**, not Junction.
 
 ### What does the clip mostly show?
 
-**First-person walk** when the camera is carried by someone walking (it bobs
-gently and moves at walking speed). Choose **Filmed from a vehicle** for car,
-bus, boat or bicycle footage, **Drone / aerial** for footage from above,
-**Static camera** when the camera does not move, and **Ads, intro, title
-cards** for anything that is not footage of the place. Judge the majority of
-the clip.
+Judge what fills **most of the clip**.
+
+| Answer | Choose it when | Example |
+|---|---|---|
+| First-person walk | The camera is carried by someone walking: it moves forward at walking speed and bobs gently. | [walking through alleys](https://www.youtube.com/watch?v=InOzQR0dhF8&t=1407s) |
+| Filmed from a vehicle | The camera rides in or on a car, bus, tram, boat or bicycle: it moves faster or more smoothly than a walker, and you may see the vehicle. | [filmed from a boat](https://www.youtube.com/watch?v=R0nwipjtJxY&t=803s) |
+| Drone / aerial | Filmed from the air, looking down on roofs or streets. A view from a hill, tower or bridge where the person is standing is **not** aerial. | |
+| Static camera | The camera stays in one place: a person talking to the camera, a fixed view, or panning around from one spot. | [talking to the camera at a table](https://www.youtube.com/watch?v=buUeuawHsO4&t=4852s) |
+| Ads, intro, title cards or other | Title text, a montage of short shots, an advert, a map or a sponsor message, not continuous footage of the place. | [intro with title text over a montage](https://www.youtube.com/watch?v=azLFLAi-9e4&t=2s) |
+
+Tie-break: a walk with short pauses (stopping at a crossing, looking around)
+is still a First-person walk. Choose Static camera only when the camera stays
+put for most of the clip.
 
 ### Main environment
 
@@ -171,8 +178,13 @@ How to decide:
 
 ### Time of day
 
-As for crash clips. Choose **Night** when the sky is dark, even in a brightly
-lit street.
+As for crash clips: judge the sky, not the lights.
+
+| Answer | Example |
+|---|---|
+| Day | [a daytime shopping street](https://www.youtube.com/watch?v=Ub3DDqPwC6A&t=28786s) |
+| Night | [city street at night](https://www.youtube.com/watch?v=6y5CqAHxGX0&t=27144s) · [Times Square: brightly lit, but the sky is dark, so Night](https://www.youtube.com/watch?v=27Pv4Cg4EV4&t=8748s) |
+| Dawn / dusk | [deep blue sky after sunset, street lights on](https://www.youtube.com/watch?v=L-7hCkpXhvg&t=16990s) |
 
 ## Location (both datasets)
 

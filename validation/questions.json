@@ -42,6 +42,7 @@
       "id": "camera_view",
       "model_field": "camera_view",
       "text": "Camera",
+      "show_if": {"event_kind": ["collision", "near_collision", "none"]},
       "options": [
         ["dashcam", "Dashcam"],
         ["cctv", "CCTV / traffic camera"],
@@ -56,6 +57,7 @@
       "id": "time_of_day",
       "model_field": "time_of_day",
       "text": "Time of day",
+      "show_if": {"event_kind": ["collision", "near_collision", "none"]},
       "options": [
         ["day", "Day"],
         ["night", "Night"],
@@ -67,6 +69,7 @@
       "id": "weather",
       "model_field": "weather",
       "text": "Weather",
+      "show_if": {"event_kind": ["collision", "near_collision", "none"]},
       "options": [
         ["clear", "Clear / dry"],
         ["rain", "Rain"],
@@ -79,6 +82,7 @@
       "id": "road_environment",
       "model_field": "road_environment",
       "text": "Where does it happen?",
+      "show_if": {"event_kind": ["collision", "near_collision", "none"]},
       "options": [
         ["motorway", "Motorway / highway"],
         ["urban", "Urban street"],
@@ -93,6 +97,7 @@
       "id": "location",
       "text": "The pipeline places this clip in <b>{location}</b>. Does what you see agree?",
       "show_if_location": true,
+      "show_if": {"event_kind": ["collision", "near_collision", "none"]},
       "options": [
         ["consistent", "Yes, or nothing contradicts it"],
         ["contradicted", "No, something contradicts it"],

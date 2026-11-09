@@ -30,6 +30,9 @@ Example links open YouTube at the moment that matters; each example lasts
 | No crash or near-collision | Normal driving, the aftermath only, or a clip that never shows the event. |
 | Not real traffic footage | Video game, animation, film scene, studio presenter, channel intro or title cards. |
 
+If you choose **Not real traffic footage**, the other questions disappear:
+there is nothing to judge.
+
 Tie-break: if you cannot see whether they touched, choose near-collision only
 when both clearly keep moving undamaged; otherwise choose collision.
 

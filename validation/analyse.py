@@ -37,6 +37,11 @@ SYNONYMS = {
 csv.field_size_limit(sys.maxsize)
 
 
+def shown(question: dict, values: dict) -> bool:
+    """Whether the review page shows this question for these answers."""
+    return all(values.get(qid) in allowed for qid, allowed in question.get("show_if", {}).items())
+
+
 def kappa(pairs: list[tuple[str, str]]) -> float | None:
     n = len(pairs)
     if not n:
@@ -94,7 +99,9 @@ def main() -> None:
         print(f"{'question':24} {'n':>4} {'agree':>6} {'wtd':>6} {'kappa':>6} {'judged':>7} {'agree*':>6}")
         for question in dataset_questions:
             qid = question["id"]
-            answered = [(item, values[qid]) for _, item, values in rows if qid in values]
+            # Answers given before a question became conditional are left out.
+            answered = [(item, values[qid]) for _, item, values in rows
+                        if qid in values and shown(question, values)]
             if not answered:
                 continue
             field = question.get("model_field")

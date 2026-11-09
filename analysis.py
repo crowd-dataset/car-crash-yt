@@ -70,11 +70,11 @@ ROOT = Path(__file__).resolve().parent
 #
 # Synthetic mode is for layout/prototyping only and must not be reported as an
 # empirical result.
-ENABLE_SYNTHETIC_MANNER_COMPLETION = True
+ENABLE_SYNTHETIC_MANNER_COMPLETION = False
 
 # Deterministic seed. Keeping this fixed makes the synthetic projection stable
 # across runs for the same segment identifiers.
-SYNTHETIC_MANNER_SEED = "chi_draft_manner_v1"
+SYNTHETIC_MANNER_SEED = "draft_manner_v1"
 
 # Draft-only assumed distribution for pending collision segments.
 # These are synthetic assumptions, not measured corpus statistics.
@@ -93,7 +93,7 @@ SYNTHETIC_MANNER_WEIGHTS = {
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Analyse the current car-crash state and mapping outputs for the CHI Results section."
+        description="Analyse the current car-crash state and mapping outputs for the paper results."
     )
     parser.add_argument(
         "--state",
@@ -110,13 +110,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=ROOT / "_output" / "chi_crash",
+        default=ROOT / "_output" / "crash",
         help="Directory for tables, JSON, HTML, and figure exports.",
     )
     parser.add_argument(
         "--publication-dir",
         type=Path,
-        default=ROOT / "figures" / "chi_crash",
+        default=ROOT / "figures" / "crash",
         help="Directory receiving publication figure copies.",
     )
     parser.add_argument(
@@ -366,9 +366,9 @@ class GeographicCrashResultsPlotter(CrashResultsPlotter):
     The parent :class:`CrashResultsPlotter` remains responsible for the normal
     paper figures and, crucially, for the established figure export behaviour:
 
-    * HTML, PNG, and PDF are written to ``_output/chi_crash/figures``.
+    * HTML, PNG, and PDF are written to ``_output/crash/figures``.
     * The same successfully produced files are copied to
-      ``figures/chi_crash`` for publication use.
+      ``figures/crash`` for publication use.
     * SVG and EPS export are deliberately disabled.
 
     The new map figures use the same naming, sizing, Kaleido handling, and
@@ -1290,7 +1290,7 @@ def build_paper_log(result: CrashAnalysisResult) -> str:
     This intentionally prints all category values that feed the main Results
     summaries and figures. It does not dump all 5,000+ locality rows; instead it
     prints all continent/country values and the top 25 localities, while the
-    complete locality table remains in ``_output/chi_crash/tables/localities.csv``.
+    complete locality table remains in ``_output/crash/tables/localities.csv``.
     """
     summary = result.summary
     videos = summary["videos"]
@@ -1416,7 +1416,7 @@ def build_paper_log(result: CrashAnalysisResult) -> str:
     )
     lines.append(
         "Complete locality table: "
-        "_output/chi_crash/tables/localities.csv"
+        "_output/crash/tables/localities.csv"
     )
 
     lines.append("")
@@ -1600,7 +1600,7 @@ def build_paper_log(result: CrashAnalysisResult) -> str:
     lines.append("")
     lines.append(
         "All complete CSV tables are saved under "
-        "_output/chi_crash/tables/."
+        "_output/crash/tables/."
     )
 
     return "\n".join(lines)

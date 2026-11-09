@@ -21,7 +21,7 @@ data
 www.youtube.com_cookies.txt
 
 # Operating system files
-.DS_Storecookies.txt
+.DS_Store
 /cookies.txt
 cookies.txt
 nightly_sync.log
@@ -30,6 +30,7 @@ sync_processed_files.zsh
 
 # Big files
 state.json
+walking_pipeline_state.json
 geocode_cache.json
 
 _output

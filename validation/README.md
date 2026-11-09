@@ -2,7 +2,9 @@
 
 Two reviewers label a stratified sample of crash and walking clips without
 seeing the pipeline's labels; `analyse.py` then compares their answers with the
-labels. Each reviewer gets a different half of the sample.
+labels. Each reviewer gets a different half of the sample. Reviewers should
+read [GUIDE.md](GUIDE.md) first: it defines every answer, with tie-break rules
+and example clips; the review page links to it.
 
 1. Draw the sample (already done; `sample.json` is committed, seed 2027):
 

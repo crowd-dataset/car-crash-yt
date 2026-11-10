@@ -20,6 +20,7 @@ presented as official MMUCC numeric codes.
 from __future__ import annotations
 
 import math
+import re
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -499,6 +500,56 @@ the allowed values above (null where the rules say so):
 """.strip()
 
 
+# Segments skipped because their source could not be downloaded. They are
+# classified after all once a copy of the video appears in SHARED_VIDEO_DIRS.
+SKIPPED_FOR_SOURCE = {"download_failed", "video_unavailable", "age_restricted"}
+
+
+def _record_video_id(record: Dict[str, Any]) -> Optional[str]:
+    metadata = record.get("metadata")
+    url = metadata.get("youtube_url", "") if isinstance(metadata, dict) else ""
+    match = re.search(r"[?&]v=([\w-]{11})", str(url or ""))
+    return match.group(1) if match else None
+
+
+def _shared_copy_signature(record: Dict[str, Any]) -> Optional[str]:
+    """Path and size of a shared copy of the record's video, if there is one.
+
+    Only a cheap existence check: this runs for every skipped record on every
+    cycle. The copy is validated when the taxonomy stage opens it.
+    """
+    video_id = _record_video_id(record)
+    if not video_id:
+        return None
+    for folder in settings.SHARED_VIDEO_DIRS:
+        for suffix in (".mp4", ".mkv", ".webm", ".mov"):
+            path = folder / f"{video_id}{suffix}"
+            if path.is_file():
+                return f"{path}:{path.stat().st_size}"
+    return None
+
+
+def _retry_from_shared_copy(record: Dict[str, Any]) -> bool:
+    """A skipped record whose video has since become available locally.
+
+    A copy that already failed once is not tried again until it changes.
+    """
+    if record.get("crash_taxonomy_status") not in SKIPPED_FOR_SOURCE:
+        return False
+    signature = _shared_copy_signature(record)
+    return signature is not None and signature != record.get(
+        "crash_taxonomy_failed_source"
+    )
+
+
+def _segment_pending(segment: Any, retry_skipped: bool) -> bool:
+    if not isinstance(segment, dict):
+        return False
+    if segment.get("crash_taxonomy_version") != CRASH_TAXONOMY_VERSION:
+        return True
+    return retry_skipped and segment.get("crash_taxonomy_status") in SKIPPED_FOR_SOURCE
+
+
 def crash_taxonomy_pending(record: Any) -> bool:
     """Whether a completed record still needs taxonomy backfill."""
     if not isinstance(record, dict) or record.get("status") != "complete":
@@ -508,19 +559,16 @@ def crash_taxonomy_pending(record: Any) -> bool:
     if not isinstance(segments, list):
         return False
 
-    return any(
-        isinstance(segment, dict)
-        and segment.get("crash_taxonomy_version") != CRASH_TAXONOMY_VERSION
-        for segment in segments
-    )
+    retry_skipped = _retry_from_shared_copy(record)
+    return any(_segment_pending(segment, retry_skipped) for segment in segments)
 
 
 def _pending_segments(record: Dict[str, Any]) -> List[Dict[str, Any]]:
+    retry_skipped = _retry_from_shared_copy(record)
     return [
         segment
         for segment in record.get("segments", [])
-        if isinstance(segment, dict)
-        and segment.get("crash_taxonomy_version") != CRASH_TAXONOMY_VERSION
+        if _segment_pending(segment, retry_skipped)
     ]
 
 
@@ -770,6 +818,8 @@ def run_crash_taxonomy_stage(
                 error = clean_text(exc) or "video_download_failed"
                 status = classify_download_failure(error) or "download_failed"
                 _mark_video_unavailable(record, segments, error, status)
+                # Do not retry the same shared copy until it changes.
+                record["crash_taxonomy_failed_source"] = _shared_copy_signature(record)
                 log(f"Skipping taxonomy backfill for {video_id} ({status}): {error}")
                 processed += len(segments)
                 save_state(settings.STATE_JSON, state)
@@ -781,6 +831,7 @@ def run_crash_taxonomy_stage(
             if record.get("crash_taxonomy_status") == "download_error":
                 record["crash_taxonomy_status"] = None
                 record["crash_taxonomy_error"] = None
+            record.pop("crash_taxonomy_failed_source", None)
 
             if judge is None:
                 from .crash_review import CosmosCrashJudge

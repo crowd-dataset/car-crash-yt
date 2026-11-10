@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from car_crash_pipeline.crash_taxonomy import (
@@ -226,6 +228,52 @@ class CrashTaxonomyTests(unittest.TestCase):
         self.assertEqual(segment["crash_taxonomy_status"], "download_failed")
         self.assertEqual(segment["crash_taxonomy_version"], CRASH_TAXONOMY_VERSION)
         self.assertFalse(crash_taxonomy_pending(record))
+
+    def test_skipped_download_is_retried_once_a_shared_copy_exists(self) -> None:
+        state = {
+            "videos": {
+                "abcdefghijk": {
+                    "status": "complete",
+                    "metadata": {"youtube_url": "https://www.youtube.com/watch?v=abcdefghijk"},
+                    "segments": [
+                        {
+                            "segment_index": 0,
+                            "start_time": 1.0,
+                            "end_time": 2.0,
+                            "duration_seconds": 1.0,
+                            "event_kind": "collision",
+                        }
+                    ],
+                }
+            }
+        }
+        record = state["videos"]["abcdefghijk"]
+
+        with tempfile.TemporaryDirectory() as folder:
+            shared = Path(folder)
+            with (
+                patch("car_crash_pipeline.crash_taxonomy.settings.SHARED_VIDEO_DIRS", [shared]),
+                patch(
+                    "car_crash_pipeline.crash_taxonomy._obtain_video",
+                    side_effect=RuntimeError("Sign in to confirm you're not a bot"),
+                ),
+                patch("car_crash_pipeline.crash_taxonomy.save_state"),
+            ):
+                run_crash_taxonomy_stage(state, max_videos=1)
+                self.assertEqual(record["crash_taxonomy_status"], "download_failed")
+                # No copy anywhere: skipped, so it does not hold up discovery.
+                self.assertFalse(crash_taxonomy_pending(record))
+
+                (shared / "abcdefghijk.mp4").write_bytes(b"video")
+                self.assertTrue(crash_taxonomy_pending(record))
+
+                # The copy fails too: it is not retried until it changes.
+                run_crash_taxonomy_stage(state, max_videos=1)
+                self.assertFalse(crash_taxonomy_pending(record))
+                self.assertEqual(record["segments"][0]["event_kind"], "collision")
+
+                (shared / "abcdefghijk.mp4").write_bytes(b"a longer video")
+                self.assertTrue(crash_taxonomy_pending(record))
 
     def test_legacy_cooldown_record_is_retried_once_then_skipped(self) -> None:
         state = {

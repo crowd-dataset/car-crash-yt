@@ -29,8 +29,9 @@ Example links open YouTube at the moment that matters; each example lasts
 | A near-collision | A crash almost happens but there is no contact: hard braking, swerving, a very close pass. |
 | No crash or near-collision | Normal driving, the aftermath only, or a clip that never shows the event. |
 | Not real traffic footage | Video game, animation, film scene, studio presenter, channel intro or title cards. |
+| Unusable clip | Junk that fits none of the above: a still image, a black or frozen screen, a slideshow, or content unrelated to traffic. |
 
-If you choose **Not real traffic footage**, the other questions disappear:
+If you choose **Not real traffic footage** or **Unusable clip**, the other questions disappear:
 there is nothing to judge.
 
 Tie-break: if you cannot see whether they touched, choose near-collision only
@@ -126,6 +127,7 @@ Judge what fills **most of the clip**.
 | Drone / aerial | Filmed from the air, looking down on roofs or streets. A view from a hill, tower or bridge where the person is standing is **not** aerial. | |
 | Static camera | The camera stays in one place: a person talking to the camera, a fixed view, or panning around from one spot. | [talking to the camera at a table](https://www.youtube.com/watch?v=buUeuawHsO4&t=4852s) |
 | Ads, intro, title cards or other | Title text, a montage of short shots, an advert, a map or a sponsor message, not continuous footage of the place. | [intro with title text over a montage](https://www.youtube.com/watch?v=azLFLAi-9e4&t=2s) |
+| Unusable clip | Junk that fits none of the above: a still image, a black or frozen screen, or content that has nothing to do with walking or the place. The other questions disappear. | |
 
 Tie-break: a walk with short pauses (stopping at a crossing, looking around)
 is still a First-person walk. Choose Static camera only when the camera stays

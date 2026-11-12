@@ -8,7 +8,8 @@
         ["collision", "A collision (contact happens)"],
         ["near_collision", "A near-collision (no contact)"],
         ["none", "No crash or near-collision"],
-        ["not_real_traffic", "Not real traffic footage (game, animation, studio)"]
+        ["not_real_traffic", "Not real traffic footage (game, animation, studio)"],
+        ["unusable", "Unusable clip (junk, still image, black screen, unrelated)"]
       ]
     },
     {
@@ -115,7 +116,8 @@
         ["vehicle", "Filmed from a vehicle"],
         ["drone_aerial", "Drone / aerial"],
         ["static", "Static camera"],
-        ["other", "Ads, intro, title cards or other"]
+        ["other", "Ads, intro, title cards or other"],
+        ["unusable", "Unusable clip (junk, still image, black screen, unrelated)"]
       ]
     },
     {
@@ -153,6 +155,7 @@
       "id": "location",
       "text": "The pipeline places this clip in <b>{location}</b>. Does what you see agree?",
       "show_if_location": true,
+      "show_if": {"content": ["walking", "vehicle", "drone_aerial", "static", "other"]},
       "options": [
         ["consistent", "Yes, or nothing contradicts it"],
         ["contradicted", "No, something contradicts it"],

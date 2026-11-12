@@ -236,7 +236,8 @@ def save(fig: go.Figure, path: Path, width: int, height: int) -> None:
         font=dict(family="Arial", size=14, color="#1f1f1e"),
         margin=dict(l=70, r=30, t=40, b=60),
     )
-    fig.write_html(path.with_suffix(".html"), include_plotlyjs="cdn")
+    # Embedded so the README's htmlpreview.github.io links can show the figure.
+    fig.write_html(path.with_suffix(".html"), include_plotlyjs=True)
     for suffix in (".png", ".pdf"):
         try:
             fig.write_image(path.with_suffix(suffix), width=width, height=height, scale=2 if suffix == ".png" else 1)

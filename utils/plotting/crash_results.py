@@ -13,9 +13,11 @@ import plotly.graph_objects as go
 
 from utils.analytics.crash_results import CrashAnalysisResult
 
+README_FIGURES = {"fig_world_geographic_coverage", "fig_road_users"}
+
 
 class CrashResultsPlotter:
-    """Create CHI-facing figures from :class:`CrashAnalysisResult`."""
+    """Create the crash figures from :class:`CrashAnalysisResult`."""
 
     def __init__(
         self,
@@ -44,7 +46,9 @@ class CrashResultsPlotter:
         self._base_layout(fig, width=width, height=height)
 
         html_path = self.output_dir / f"{name}.html"
-        fig.write_html(html_path, include_plotlyjs="cdn")
+        # README figures open through htmlpreview.github.io, which cannot load
+        # Plotly from the CDN: embed it in those files only.
+        fig.write_html(html_path, include_plotlyjs=True if name in README_FIGURES else "cdn")
 
         produced: list[Path] = [html_path]
         for suffix in ("png", "svg", "pdf"):

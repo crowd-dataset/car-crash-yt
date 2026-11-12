@@ -17,7 +17,9 @@ videos and no frames from videos**: every row points to the public YouTube
 video and the start and end time of the clip, and `download_videos.py` fetches
 the videos for users who need them.
 
-![Geographic coverage of crash localities](figures/crash/fig_world_geographic_coverage.png)
+[![Geographic coverage of crash localities](figures/crash/fig_world_geographic_coverage.png)](https://htmlpreview.github.io/?https://github.com/crowd-dataset/car-crash-yt/blob/main/figures/crash/fig_world_geographic_coverage.html)
+
+*Click any figure to open its interactive version.*
 
 ## At a glance
 
@@ -35,7 +37,7 @@ Snapshot of 2 November 2026; the numbers grow while the pipeline runs.
 
 | Road users in the clips | Video coverage compared with road deaths |
 |---|---|
-| ![Road users](figures/crash/fig_road_users.png) | ![Coverage by continent](figures/crash/fig_coverage_by_continent.png) |
+| [![Road users](figures/crash/fig_road_users.png)](https://htmlpreview.github.io/?https://github.com/crowd-dataset/car-crash-yt/blob/main/figures/crash/fig_road_users.html) | [![Coverage by continent](figures/crash/fig_coverage_by_continent.png)](https://htmlpreview.github.io/?https://github.com/crowd-dataset/car-crash-yt/blob/main/figures/crash/fig_coverage_by_continent.html) |
 
 The right-hand figure compares each continent's share of placed crash videos
 with its share of the world's road traffic deaths (WHO, 2021). Europe, North
@@ -305,7 +307,7 @@ Countries with crash videos account for 92% of the world's road deaths, but the
 five largest countries hold half of the placed videos, and Asia and Africa
 (84% of road deaths) hold about a quarter of them.
 
-![Crash videos against road deaths per country](figures/crash/fig_coverage_by_country.png)
+[![Crash videos against road deaths per country](figures/crash/fig_coverage_by_country.png)](https://htmlpreview.github.io/?https://github.com/crowd-dataset/car-crash-yt/blob/main/figures/crash/fig_coverage_by_country.html)
 
 ## Label validation
 

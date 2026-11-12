@@ -12,8 +12,13 @@ from car_crash_pipeline.crash_taxonomy import (
     CRASH_TAXONOMY_VERSION,
     crash_taxonomy_pending,
     normalise_taxonomy_response,
+    repair_taxonomy_response,
     run_crash_taxonomy_stage,
-    taxonomy_prompt,
+    DETAIL_PROMPT,
+    LOCATE_PROMPT,
+    _review_one_segment,
+    manner_from_parts,
+    taxonomy_from_contact,
     validate_taxonomy_response,
 )
 from car_crash_pipeline.output_writer import iter_mapping_rows, iter_rows
@@ -91,12 +96,71 @@ class CrashTaxonomyTests(unittest.TestCase):
             "crash_type_near_collision_must_match_event_kind",
         )
 
-    def test_prompt_has_no_copyable_example_answer(self) -> None:
-        prompt = taxonomy_prompt({"duration_seconds": 5.0}, {"title": "t"})
+    def test_prompts_ask_plain_questions_not_mmucc_codes(self) -> None:
+        self.assertIn("contact_time", LOCATE_PROMPT)
+        for key in ("contact", "part_a", "part_b", "directions"):
+            self.assertIn(f'"{key}"', DETAIL_PROMPT)
+        self.assertNotIn("front_to_rear_or_rear_to_front", DETAIL_PROMPT)
 
-        self.assertNotIn('"front_to_rear_or_rear_to_front"', prompt)
-        self.assertNotIn('"motor_vehicle_in_transport"', prompt)
-        self.assertIn("impact_description", prompt)
+    def test_manner_follows_from_the_parts_that_touched(self) -> None:
+        cases = {
+            ("front", "rear", "same"): "front_to_rear_or_rear_to_front",
+            ("front", "front", "opposite"): "front_to_front",
+            ("front", "front", "crossing"): "angle",
+            ("front", "left_side", "crossing"): "angle",
+            ("left_side", "right_side", "same"): "sideswipe_same_direction",
+            ("left_side", "left_side", "opposite"): "sideswipe_opposite_direction",
+            ("rear", "right_side", "crossing"): "rear_to_side_or_side_to_rear",
+            ("rear", "rear", "opposite"): "rear_to_rear",
+        }
+        for (a, b, directions), manner in cases.items():
+            self.assertEqual(manner_from_parts(a, b, directions), manner, (a, b, directions))
+
+    def test_contact_answers_become_valid_mmucc_fields(self) -> None:
+        answers = [
+            {"contact": "vehicle_vehicle", "part_a": "front", "part_b": "rear", "directions": "same"},
+            {"contact": "vehicle_object", "hit": "tree"},
+            {"contact": "vehicle_person", "hit": "pedestrian"},
+            {"contact": "rollover"},
+            {"contact": "none"},
+        ]
+        for answer in answers:
+            data = repair_taxonomy_response(taxonomy_from_contact({**answer, "description": "x"}))
+            self.assertIsNone(validate_taxonomy_response(data), answer)
+        self.assertEqual(
+            taxonomy_from_contact({"contact": "vehicle_object", "hit": "tree"})["first_harmful_event"],
+            "tree_standing_only",
+        )
+        # The model sometimes leaves the description out.
+        for answer in ({"contact": "none"}, {"contact": "vehicle_object", "hit": "tree"}):
+            self.assertIsNone(validate_taxonomy_response(repair_taxonomy_response(taxonomy_from_contact(answer))))
+
+    def test_earliest_window_with_contact_decides(self) -> None:
+        answers = iter([
+            '{"contact_time": 4.0, "what_happens": "x"}',
+            '{"contact": "none", "description": "a close pass"}',
+            '{"contact": "vehicle_vehicle", "part_a": "front", "part_b": "left_side", '
+            '"directions": "crossing", "description": "a car is hit on its side"}',
+        ])
+
+        class Judge:
+            def _generate(self, path, prompt, fps):
+                return next(answers)
+
+        with (
+            patch("car_crash_pipeline.crash_taxonomy._taxonomy_sample",
+                  side_effect=lambda video, start, duration, out, **kw: out),
+            patch("car_crash_pipeline.crash_taxonomy._motion_peaks", return_value=[1.0]),
+        ):
+            result = _review_one_segment(
+                Judge(), Path("video.mp4"), "vid",
+                {"start_time": 10.0, "end_time": 20.0, "segment_index": 0}, {}, Path("/tmp"),
+            )
+
+        self.assertEqual(result["event_kind"], "collision")
+        self.assertEqual(result["manner_of_collision"], "angle")
+        self.assertEqual(result["crash_taxonomy_impact_source"], "motion")
+        self.assertEqual(result["crash_taxonomy_impact_time"], 11.0)
 
     def test_near_collision_has_no_mmucc_harmful_event(self) -> None:
         data = {
@@ -135,6 +199,70 @@ class CrashTaxonomyTests(unittest.TestCase):
         }
 
         self.assertIsNone(validate_taxonomy_response(data))
+
+    def test_repair_drops_free_text_and_maps_synonyms_in_sequence(self) -> None:
+        data = repair_taxonomy_response({
+            "impact_description": "A car leaves the road and rolls over.",
+            "event_kind": "collision",
+            "crash_type": "rollover",
+            "manner_of_collision": "not_collision_with_motor_vehicle_in_transport",
+            "first_harmful_event": "rollover_overturn",
+            "sequence_of_events": [
+                "the dashcam vehicle brakes hard to avoid a collision.",
+                "ran_off_roadway_right",
+                "rollover",
+                "truck",
+            ],
+        })
+
+        self.assertEqual(
+            data["sequence_of_events"], ["ran_off_roadway_right", "rollover_overturn"]
+        )
+        self.assertIsNone(validate_taxonomy_response(data))
+
+    def test_repair_clears_mmucc_fields_of_a_near_collision(self) -> None:
+        data = repair_taxonomy_response({
+            "impact_description": "A car swerves and avoids a truck.",
+            "event_kind": "near_collision",
+            "crash_type": "near_collision",
+            "manner_of_collision": "unknown",
+            "first_harmful_event": "unknown",
+            "sequence_of_events": ["the car swerves to avoid a collision."],
+        })
+
+        self.assertIsNone(validate_taxonomy_response(data))
+        self.assertEqual(data["sequence_of_events"], [])
+
+    def test_unseen_impact_gives_unknown_manner_not_non_vehicle(self) -> None:
+        data = repair_taxonomy_response({
+            "impact_description": "The car's hood is crushed after an impact.",
+            "event_kind": "collision",
+            "crash_type": "unknown",
+            "manner_of_collision": "not_collision_with_motor_vehicle_in_transport",
+            "first_harmful_event": "unknown",
+            "sequence_of_events": [],
+        })
+
+        self.assertIsNone(validate_taxonomy_response(data))
+        result = normalise_taxonomy_response(data)
+        self.assertEqual(result["manner_of_collision"], "unknown")
+        self.assertEqual(result["sequence_of_events"], ["unknown"])
+
+    def test_seen_vehicle_orientation_implies_vehicle_first_harmful_event(self) -> None:
+        data = repair_taxonomy_response({
+            "impact_description": "A car turning left is struck on its side.",
+            "event_kind": "collision",
+            "crash_type": "side_impact",
+            "manner_of_collision": "angle",
+            "first_harmful_event": "unknown",
+            "sequence_of_events": ["cross_centerline"],
+        })
+
+        self.assertIsNone(validate_taxonomy_response(data))
+        self.assertEqual(data["first_harmful_event"], "motor_vehicle_in_transport")
+        self.assertEqual(
+            data["sequence_of_events"], ["cross_centerline", "motor_vehicle_in_transport"]
+        )
 
     def test_old_completed_segment_is_pending_until_backfilled(self) -> None:
         record = {

@@ -37,7 +37,7 @@ from .shared import (
 )
 
 
-CRASH_TAXONOMY_VERSION = "nhtsa_mmucc6_video_v2"
+CRASH_TAXONOMY_VERSION = "nhtsa_mmucc6_video_v3"
 CRASH_TAXONOMY_STANDARD = "NHTSA MMUCC 6th Edition (2024)"
 TAXONOMY_REVIEW_ATTEMPTS = 2
 
@@ -302,6 +302,91 @@ def _taxonomy_empty_fields(
     }
 
 
+# Words the model writes in sequence_of_events for an allowed MMUCC value.
+SEQUENCE_SYNONYMS = {
+    "rollover": "rollover_overturn",
+    "overturn": "rollover_overturn",
+    "fire": "fire_explosion",
+    "explosion": "fire_explosion",
+    "pedestrian": "non_motorist",
+    "cyclist": "non_motorist",
+    "bicyclist": "non_motorist",
+    "animal": "live_animal",
+    "tree": "tree_standing_only",
+    "pole": "utility_pole_light_support",
+    "guardrail": "guardrail_face",
+    "barrier": "other_traffic_barrier",
+    "parked_vehicle": "parked_motor_vehicle",
+    "parked_car": "parked_motor_vehicle",
+    "airborne": "vehicle_went_airborne",
+    "jackknife": "jackknife_harmful",
+}
+
+# First harmful events that say the impact itself was not seen.
+UNSEEN_FIRST_HARMFUL_EVENTS = {"unknown", "unknown_object_not_fixed", "unknown_fixed_object"}
+
+# Manners that describe two motor vehicles in transport meeting.
+VEHICLE_MANNERS = MANNER_OF_COLLISION_VALUES - {
+    "not_collision_with_motor_vehicle_in_transport",
+    "unknown",
+}
+
+
+def repair_taxonomy_response(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Fix the model's answer where the intended MMUCC value is unambiguous.
+
+    v2 rejected 10k of 24k answers, mostly for free text in sequence_of_events,
+    and forced manner "not_collision_with_motor_vehicle_in_transport" whenever
+    the first harmful event was unknown, so 94% of collisions got that manner.
+    Anything that still breaks the MMUCC rules after this is rejected as before.
+    """
+    if not isinstance(data, dict):
+        return data
+    data = dict(data)
+    event_kind = _normalised_enum(data.get("event_kind"))
+    if event_kind == "near_collision":
+        # Outside MMUCC crash coding: these fields are empty by definition.
+        data["manner_of_collision"] = None
+        data["first_harmful_event"] = None
+        data["sequence_of_events"] = []
+        return data
+    if event_kind != "collision":
+        return data
+
+    if not clean_text(data.get("impact_description")):
+        data["impact_description"] = "not described"
+
+    manner = _normalised_enum(data.get("manner_of_collision"))
+    first = _normalised_enum(data.get("first_harmful_event"))
+    if first in UNSEEN_FIRST_HARMFUL_EVENTS:
+        if manner in VEHICLE_MANNERS:
+            # The orientation was seen, so the other party was a moving vehicle.
+            first = "motor_vehicle_in_transport"
+        elif manner == "not_collision_with_motor_vehicle_in_transport":
+            # An unseen impact says nothing about what was hit.
+            manner = "unknown"
+    data["manner_of_collision"] = manner
+    data["first_harmful_event"] = first
+
+    raw = data.get("sequence_of_events")
+    values = raw if isinstance(raw, list) else []
+    sequence: List[str] = []
+    for value in values:
+        value = _normalised_enum(value)
+        value = SEQUENCE_SYNONYMS.get(value, value)
+        # Free text and values of other fields are dropped, not guessed at.
+        if value in SEQUENCE_OF_EVENT_VALUES and value not in sequence:
+            sequence.append(value)
+    if first in SEQUENCE_OF_EVENT_VALUES:
+        # The first harmful event must be in the sequence, after any
+        # non-harmful precursors and before every other harmful event.
+        precursors = [v for v in sequence if v in NON_HARMFUL_SEQUENCE_VALUES]
+        later = [v for v in sequence if v not in NON_HARMFUL_SEQUENCE_VALUES and v != first]
+        sequence = precursors + [first] + later
+    data["sequence_of_events"] = sequence[:4]
+    return data
+
+
 def validate_taxonomy_response(data: Dict[str, Any]) -> Optional[str]:
     """Return a semantic validation error for a taxonomy-only model response."""
     event_kind = _normalised_enum(data.get("event_kind"))
@@ -349,6 +434,9 @@ def validate_taxonomy_response(data: Dict[str, Any]) -> Optional[str]:
     if first_value == "motor_vehicle_in_transport":
         if manner_value == "not_collision_with_motor_vehicle_in_transport":
             return "motor_vehicle_in_transport_requires_collision_manner"
+    elif first_value in UNSEEN_FIRST_HARMFUL_EVENTS:
+        if manner_value != "unknown":
+            return "unseen_first_harmful_event_requires_unknown_manner"
     elif manner_value != "not_collision_with_motor_vehicle_in_transport":
         return "non_motor_vehicle_first_harmful_event_requires_not_collision_manner"
 
@@ -412,92 +500,117 @@ def normalise_taxonomy_response(data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def taxonomy_prompt(
-    segment: Dict[str, Any],
-    metadata: Optional[Dict[str, Any]] = None,
-) -> str:
-    """Build the taxonomy-only prompt used to classify accepted segments."""
-    metadata = metadata if isinstance(metadata, dict) else {}
-    duration = float(segment.get("duration_seconds") or 0.0)
-    title = clean_text(metadata.get("title"))
-    previous_description = clean_text(segment.get("short_description"))
-
-    manner_lines = "\n".join(
-        f"- {value}: {MANNER_OF_COLLISION_DEFINITIONS[value]}"
-        for value in sorted(MANNER_OF_COLLISION_VALUES)
-    )
-    crash_types = ", ".join(sorted(CRASH_TYPE_VALUES))
-    first_values = ", ".join(sorted(FIRST_HARMFUL_EVENT_VALUES))
-    sequence_values = ", ".join(sorted(SEQUENCE_OF_EVENT_VALUES))
-
-    return f"""
-You are classifying an already accepted road safety video segment using the
-NHTSA Model Minimum Uniform Crash Criteria, MMUCC, Sixth Edition.
-
-Use only events that are visibly supported by this video. Do not infer fault,
-injury severity, intent, legal responsibility, or an event that happens outside
-the sampled clip.
-
-The clip duration is {duration:.3f} seconds.
-
-Work in this order:
-1. impact_description: one sentence saying what the first harmful event is and,
-   for a collision between vehicles, which part of each vehicle (front, rear,
-   left side, right side) touches the other. For a near collision, describe
-   the evasive action instead.
-2. Choose every other field so that it agrees with impact_description.
-
-Dataset extension:
-event_kind is collision when visible contact, damage-producing impact,
-rollover, fire, or another harmful crash event occurs.
-event_kind is near_collision only when impact is narrowly avoided through
-visible evasive action. A near collision is outside MMUCC crash coding, so
-manner_of_collision and first_harmful_event must both be null and
-sequence_of_events must be [].
-
-crash_type is near_collision exactly when event_kind is near_collision. For a
-collision, choose the type that matches the impact: rear_end, side_impact,
-head_on, rollover, pedestrian, cyclist, multi_vehicle (three or more vehicles),
-single_vehicle (one vehicle and no other road user), other or unknown.
-Allowed crash_type values: {crash_types}
-
-For a collision:
-1. C7 First Harmful Event is the first visible injury-producing or
-   damage-producing event.
-2. C9 Manner of Collision describes the orientation of the two vehicles at the
-   first harmful event, and only when that event is a collision with another
-   motor vehicle in transport. Otherwise it is
-   not_collision_with_motor_vehicle_in_transport.
-3. V37 Sequence of Events contains up to four visually observable events in
-   chronological order. Include non-harmful precursor events only when visible.
-   The first harmful event must appear in the sequence.
-
-Manner of collision values and their meaning:
-{manner_lines}
-Use unknown rather than guessing. Do not default to any value: rear-end
-collisions are only one of several common manners.
-
-Previous machine-generated description, to help you find the event (it may be
-wrong): {previous_description or "none"}
-Upload title: {title or "none"}
-
-Allowed first_harmful_event:
-{first_values}
-
-Allowed sequence_of_events:
-{sequence_values}
-
-Return one JSON object only, with exactly these keys, each value chosen from
-the allowed values above (null where the rules say so):
-{{
-  "impact_description": "<one sentence>",
-  "event_kind": "<collision or near_collision>",
-  "crash_type": "<one crash_type value>",
-  "manner_of_collision": "<one manner_of_collision value, or null>",
-  "first_harmful_event": "<one first_harmful_event value, or null>",
-  "sequence_of_events": ["<up to four sequence_of_events values>"]
-}}
+# v3 classifies in two steps, because v2's single prompt over 24 small frames of
+# the whole clip missed the moment of contact: on clips two human reviewers
+# labelled, it called most collisions near collisions. The model first reads the
+# time printed on frames of the whole clip to find first contact; then it sees
+# short windows around that moment (and around the largest frame-to-frame
+# changes) and answers plain questions. Fixed rules turn the answers into MMUCC.
+LOCATE_PROMPT = """
+This is a road traffic video clip. Every frame shows its time in seconds at the top left as t=...
+Find the first moment of physical contact: two road users touching, or a vehicle touching an object,
+a person or an animal, or a vehicle starting to roll over. If nothing touches, choose the moment the
+road users come closest to each other.
+Return one JSON object only: {"contact_time": <the t value of that moment, a number>,
+"what_happens": "<one sentence>"}
 """.strip()
+
+DETAIL_PROMPT = """
+This short road traffic clip (about 4 seconds) is centred on the moment two road users come into
+contact or come closest. Answer from what you can see. Always choose one of the given values.
+Return one JSON object only, with these keys:
+{
+ "contact": one of "vehicle_vehicle" (two moving motor vehicles touch), "vehicle_object" (a vehicle
+   hits a barrier, pole, tree, wall, parked vehicle, debris or other object), "vehicle_person" (a
+   vehicle hits a pedestrian, cyclist or animal), "rollover" (a vehicle overturns without hitting
+   anything first), "none" (nothing touches: a near miss);
+ "hit": for vehicle_object or vehicle_person, what was hit: "pedestrian", "cyclist", "animal",
+   "parked_vehicle", "barrier_or_guardrail", "pole_or_sign", "tree", "wall_or_building" or "other";
+ "part_a": for vehicle_vehicle, the part of the first vehicle (the camera vehicle if it is involved)
+   that touches first: "front", "rear", "left_side" or "right_side";
+ "part_b": the part of the other vehicle that touches first: "front", "rear", "left_side" or
+   "right_side";
+ "directions": just before contact the two vehicles were moving "same" way, "opposite" ways, or
+   "crossing" paths;
+ "description": one sentence describing the contact.
+}
+Fill every key with your best choice; keys that do not apply to the contact are ignored.
+""".strip()
+
+TAXONOMY_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+TAXONOMY_WINDOW_SECONDS = 2.0
+TAXONOMY_MAX_WINDOWS = 3
+CONTACT_VALUES = {"vehicle_vehicle", "vehicle_object", "vehicle_person", "rollover", "none"}
+HIT_FIRST_HARMFUL_EVENTS = {
+    "pedestrian": "non_motorist",
+    "cyclist": "non_motorist",
+    "animal": "live_animal",
+    "parked_vehicle": "parked_motor_vehicle",
+    "barrier_or_guardrail": "other_traffic_barrier",
+    "pole_or_sign": "other_post_pole_or_other_supports",
+    "tree": "tree_standing_only",
+    "wall_or_building": "wall",
+    "other": "other_object_not_fixed",
+}
+MANNER_CRASH_TYPES = {
+    "front_to_rear_or_rear_to_front": "rear_end",
+    "front_to_front": "head_on",
+    "angle": "side_impact",
+    "sideswipe_same_direction": "side_impact",
+    "sideswipe_opposite_direction": "side_impact",
+    "rear_to_side_or_side_to_rear": "side_impact",
+    "rear_to_rear": "other",
+    "other": "other",
+}
+
+
+def manner_from_parts(part_a: str, part_b: str, directions: str) -> str:
+    """MMUCC C9 manner of collision from the parts that touched first."""
+    side = {"left_side", "right_side"}
+    parts = {part_a, part_b}
+    if parts == {"front", "rear"}:
+        return "front_to_rear_or_rear_to_front"
+    if parts == {"front"}:
+        return "angle" if directions == "crossing" else "front_to_front"
+    if "front" in parts and parts & side:
+        return "angle"
+    if parts <= side and parts:
+        if directions == "opposite":
+            return "sideswipe_opposite_direction"
+        return "angle" if directions == "crossing" else "sideswipe_same_direction"
+    if "rear" in parts and parts & side:
+        return "rear_to_side_or_side_to_rear"
+    if parts == {"rear"}:
+        return "rear_to_rear"
+    return "other"
+
+
+def taxonomy_from_contact(detail: Dict[str, Any]) -> Dict[str, Any]:
+    """Turn the plain answers of the detail step into the MMUCC response fields."""
+    contact = _normalised_enum(detail.get("contact"))
+    # An empty description must not throw away an otherwise usable answer.
+    description = clean_text(detail.get("description")) or "not described"
+    if contact == "none":
+        return {"impact_description": description, "event_kind": "near_collision",
+                "crash_type": "near_collision", "manner_of_collision": None,
+                "first_harmful_event": None, "sequence_of_events": []}
+    if contact == "vehicle_vehicle":
+        manner = manner_from_parts(
+            _normalised_enum(detail.get("part_a")),
+            _normalised_enum(detail.get("part_b")),
+            _normalised_enum(detail.get("directions")),
+        )
+        first, crash_type = "motor_vehicle_in_transport", MANNER_CRASH_TYPES[manner]
+    elif contact == "rollover":
+        manner, first, crash_type = (
+            "not_collision_with_motor_vehicle_in_transport", "rollover_overturn", "rollover")
+    else:
+        hit = _normalised_enum(detail.get("hit"))
+        manner = "not_collision_with_motor_vehicle_in_transport"
+        first = HIT_FIRST_HARMFUL_EVENTS.get(hit, "other_object_not_fixed")
+        crash_type = {"pedestrian": "pedestrian", "cyclist": "cyclist"}.get(hit, "single_vehicle")
+    return {"impact_description": description, "event_kind": "collision", "crash_type": crash_type,
+            "manner_of_collision": manner, "first_harmful_event": first, "sequence_of_events": [first]}
 
 
 # Segments skipped because their source could not be downloaded. They are
@@ -641,6 +754,70 @@ def _obtain_video(video_id: str, record: Dict[str, Any]) -> Path:
     return path
 
 
+def _taxonomy_sample(
+    video_path: Path, start: float, duration: float, destination: Path,
+    *, fps: float, width: int, stamp_time: bool,
+) -> Path:
+    from .crash_review import _run_sample_command
+
+    filters = f"fps={fps:.4g},scale={width}:-2,setpts=PTS-STARTPTS"
+    if stamp_time:
+        filters += (
+            f",drawtext=fontfile={TAXONOMY_FONT}:text='t=%{{pts\\:flt}}':x=8:y=8:"
+            "fontsize=26:fontcolor=white:box=1:boxcolor=black@0.7"
+        )
+    command = [
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
+        "-ss", f"{start:.6f}", "-i", str(video_path), "-t", f"{duration:.6f}",
+        "-vf", filters, "-an", "-c:v", "libx264", "-bf", "0", "-preset", "veryfast",
+        "-crf", "22", "-y", str(destination),
+    ]
+    _run_sample_command(command, destination, timeout=600, label="failed to create taxonomy sample")
+    return destination
+
+
+def _motion_peaks(video_path: Path, start: float, duration: float, count: int = 2) -> List[float]:
+    """Clip-relative times of the largest frame-to-frame changes, 1.5 s apart.
+
+    A crash jolts the camera or changes the picture abruptly, so these are
+    candidate contact moments next to the model's own estimate.
+    """
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return []
+    capture = cv2.VideoCapture(str(video_path))
+    changes, previous, offset = [], None, 0.0
+    while offset <= duration:
+        capture.set(cv2.CAP_PROP_POS_MSEC, (start + offset) * 1000)
+        ok, frame = capture.read()
+        if not ok:
+            break
+        gray = cv2.cvtColor(cv2.resize(frame, (160, 90)), cv2.COLOR_BGR2GRAY).astype(np.float32)
+        if previous is not None:
+            changes.append((float(np.mean(np.abs(gray - previous))), offset))
+        previous, offset = gray, offset + 0.1
+    capture.release()
+    peaks: List[float] = []
+    for _, when in sorted(changes, reverse=True):
+        if all(abs(when - peak) >= 1.5 for peak in peaks):
+            peaks.append(when)
+        if len(peaks) == count:
+            break
+    return peaks
+
+
+def _ask_json(judge: Any, path: Path, prompt: str, fps: float) -> tuple:
+    answer = ""
+    for _ in range(TAXONOMY_REVIEW_ATTEMPTS):
+        answer = judge._generate(path, prompt, fps)
+        data = recover_json(answer)
+        if isinstance(data, dict):
+            return data, answer
+    return None, answer
+
+
 def _review_one_segment(
     judge: Any,
     video_path: Path,
@@ -649,54 +826,63 @@ def _review_one_segment(
     metadata: Dict[str, Any],
     work: Path,
 ) -> Dict[str, Any]:
-    from .crash_review import _create_segment_sample
-    from .cut_detection import FullSegment
+    start = float(segment.get("start_time"))
+    duration = max(float(segment.get("end_time")) - start, 0.5)
+    index = int(segment.get("segment_index", 0))
 
-    full_segment = FullSegment(
-        start_time=float(segment.get("start_time")),
-        end_time=float(segment.get("end_time")),
+    # Step 1: candidate moments of first contact.
+    candidates: List[tuple] = []
+    overview_fps = min(4.0, max(32 / duration, 1.0))
+    try:
+        overview = _taxonomy_sample(
+            video_path, start, duration, work / f"taxonomy-{index:05d}-overview.mp4",
+            fps=overview_fps, width=480, stamp_time=Path(TAXONOMY_FONT).is_file(),
+        )
+        located, _ = _ask_json(judge, overview, LOCATE_PROMPT, overview_fps)
+        contact_time = float((located or {}).get("contact_time"))
+        if 0 <= contact_time <= duration:
+            candidates.append(("model", contact_time))
+    except (TypeError, ValueError):
+        pass
+    for peak in _motion_peaks(video_path, start, duration):
+        if all(abs(peak - when) >= 1.0 for _, when in candidates):
+            candidates.append(("motion", peak))
+    if not candidates:
+        candidates.append(("middle", duration / 2))
+
+    # Step 2: plain questions on a short window around each candidate. The
+    # earliest window in which contact is seen decides; a near miss otherwise.
+    windows = []
+    for source, when in candidates[:TAXONOMY_MAX_WINDOWS]:
+        w0 = max(0.0, when - TAXONOMY_WINDOW_SECONDS)
+        w1 = min(duration, when + TAXONOMY_WINDOW_SECONDS)
+        sample = _taxonomy_sample(
+            video_path, start + w0, max(w1 - w0, 0.5),
+            work / f"taxonomy-{index:05d}-window.mp4", fps=10.0, width=640, stamp_time=False,
+        )
+        detail, answer = _ask_json(judge, sample, DETAIL_PROMPT, 10.0)
+        if detail is not None and _normalised_enum(detail.get("contact")) in CONTACT_VALUES:
+            windows.append((detail, answer, source, when))
+    if not windows:
+        return {"status": "model_error", "error": "model_did_not_return_usable_taxonomy", "raw_response": ""}
+    detail, answer, source, when = min(
+        windows,
+        key=lambda item: (_normalised_enum(item[0].get("contact")) == "none", item[3]),
     )
 
-    sample_path, sample_fps = _create_segment_sample(
-        video_path,
-        full_segment,
-        work / f"taxonomy-{int(segment.get('segment_index', 0)):05d}.mp4",
-    )
-
-    base_prompt = taxonomy_prompt(segment, metadata)
-    prompt = base_prompt
-    answer = ""
-    last_error = "model_did_not_return_usable_taxonomy"
-
-    for attempt in range(TAXONOMY_REVIEW_ATTEMPTS):
-        try:
-            answer = judge._generate(sample_path, prompt, sample_fps)
-            data = recover_json(answer)
-            if data is None:
-                last_error = "json_recovery_failed"
-            else:
-                error = validate_taxonomy_response(data)
-                if error is None:
-                    result = normalise_taxonomy_response(data)
-                    result["crash_taxonomy_raw_response"] = answer
-                    return result
-                last_error = f"semantic_error: {error}"
-        except Exception as exc:
-            last_error = f"model_error: {exc}"
-
-        if attempt + 1 < TAXONOMY_REVIEW_ATTEMPTS:
-            prompt = (
-                base_prompt
-                + "\n\nYour previous answer was invalid because: "
-                + last_error
-                + ". Reinspect the video and return one corrected JSON object."
-            )
-
-    return {
-        "status": "model_error",
-        "error": last_error,
-        "raw_response": answer,
+    # Step 3: fixed rules, then the same MMUCC checks as before.
+    data = repair_taxonomy_response(taxonomy_from_contact(detail))
+    error = validate_taxonomy_response(data)
+    if error is not None:
+        return {"status": "model_error", "error": f"semantic_error: {error}", "raw_response": answer}
+    result = normalise_taxonomy_response(data)
+    result["crash_taxonomy_raw_response"] = answer
+    result["crash_taxonomy_contact"] = {
+        key: detail.get(key) for key in ("contact", "hit", "part_a", "part_b", "directions")
     }
+    result["crash_taxonomy_impact_time"] = round(start + when, 3)
+    result["crash_taxonomy_impact_source"] = source
+    return result
 
 
 def _store_model_error(

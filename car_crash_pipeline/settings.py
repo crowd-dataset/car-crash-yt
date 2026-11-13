@@ -46,6 +46,12 @@ def boolean(name: str) -> bool:
     return value
 
 
+def boolean_or(name: str, default: bool) -> bool:
+    if name not in _CONFIG:
+        return default
+    return boolean(name)
+
+
 def integer(name: str, minimum: int = 0, maximum: Optional[int] = None) -> int:
     value = _value(name)
     if isinstance(value, bool) or not isinstance(value, int):
@@ -181,6 +187,10 @@ MIN_LOCATION_CONFIDENCE = max(
     number_or("MIN_LOCATION_CONFIDENCE", 0.90, 0.0, 1.0),
 )
 MAX_REVIEW_CYCLES = integer_or("MAX_REVIEW_CYCLES", 3, 1, 20)
+# Redo the cut check and crash review of videos reviewed with prompts that
+# showed a filled-in example answer (crash review v1-v4). Off by default: it
+# re-downloads every video and changes segment boundaries and IDs.
+REDO_EXAMPLE_PROMPT_REVIEWS = boolean_or("REDO_EXAMPLE_PROMPT_REVIEWS", False)
 
 CUT_BACKEND = text("CUT_BACKEND").lower()
 if CUT_BACKEND not in {"auto", "ffmpeg_cuda", "ffmpeg_cpu"}:

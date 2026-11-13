@@ -31,22 +31,32 @@ from .shared import (
 )
 
 
-# v4: the prompt no longer shows an example answer the model could copy.
-# Earlier reviews stay valid; their crash_type is re-checked by the taxonomy.
-CRASH_REVIEW_VERSION = "cosmos3_full_clip_crash_v4"
+# v4: the segment prompt no longer shows an example answer the model could copy.
+# v5: neither does the cut-check prompt. Up to v4 the cut check ended with
+# {"is_edit_boundary": true, "confidence": 0.95, "transition_type": "hard_cut"},
+# and up to v3 the segment prompt with {"is_crash": true, "confidence": 0.95,
+# "crash_type": "near_collision", "road_environment": "motorway", ...}. The model
+# copied them: in the 2026-11-10 state 99.6% of cut checks and every accepted
+# segment have confidence 0.95, and 97% of proposed cuts were accepted.
+CRASH_REVIEW_VERSION = "cosmos3_full_clip_crash_v5"
 LOCATION_VISUAL_REVIEW_VERSION = "cosmos3_location_text_v2"
-COMPATIBLE_REVIEW_VERSIONS = {
+EXAMPLE_PROMPT_REVIEW_VERSIONS = {
     "cosmos3_full_clip_crash_v1",
     "cosmos3_full_clip_crash_v2",
     "cosmos3_full_clip_crash_v3",
-    CRASH_REVIEW_VERSION,
+    "cosmos3_full_clip_crash_v4",
 }
-# Reviews that do not need redoing: v3 differs from v4 only in the prompt's
-# example, and its crash_type is re-checked by the taxonomy stage.
-UP_TO_DATE_REVIEW_VERSIONS = {
-    "cosmos3_full_clip_crash_v3",
-    CRASH_REVIEW_VERSION,
-}
+if settings.REDO_EXAMPLE_PROMPT_REVIEWS:
+    # Only reviews made without a copyable example are resumed or kept.
+    COMPATIBLE_REVIEW_VERSIONS = {CRASH_REVIEW_VERSION}
+    UP_TO_DATE_REVIEW_VERSIONS = {CRASH_REVIEW_VERSION}
+else:
+    COMPATIBLE_REVIEW_VERSIONS = EXAMPLE_PROMPT_REVIEW_VERSIONS | {CRASH_REVIEW_VERSION}
+    UP_TO_DATE_REVIEW_VERSIONS = {
+        "cosmos3_full_clip_crash_v3",
+        "cosmos3_full_clip_crash_v4",
+        CRASH_REVIEW_VERSION,
+    }
 CRASH_TYPES = {
     "rear_end",
     "side_impact",
@@ -584,12 +594,16 @@ change of camera, place, time, or recording. Rapid ego motion, impact shake,
 exposure change, occlusion, or a pan within one continuous recording is not an
 edit. Be conservative: accept only direct temporal evidence of an edit.
 
-Return JSON only:
+The confidence value is your certainty that the is_edit_boundary decision is
+correct, for either answer.
+
+Return one JSON object only, with exactly these keys. Each <...> stands for
+your own answer; there is no default answer.
 {{
-  "is_edit_boundary": true,
-  "confidence": 0.95,
-  "transition_type": "hard_cut",
-  "short_reason": "one factual sentence"
+  "is_edit_boundary": <true or false>,
+  "confidence": <number between 0 and 1>,
+  "transition_type": "<one of hard_cut, fade, wipe, title_card, none>",
+  "short_reason": "<one factual sentence>"
 }}
 """.strip()
         try:

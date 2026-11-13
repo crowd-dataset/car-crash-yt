@@ -2,7 +2,9 @@
 
 Two reviewers label a stratified sample of crash and walking clips without
 seeing the pipeline's labels; `analyse.py` then compares their answers with the
-labels. Each reviewer gets a different half of the sample. Reviewers should
+labels. The sample has two halves of 200 clips. So far both reviewers have
+labelled the same half, so their answers can also be compared with each other;
+the other half is still to be reviewed. Reviewers should
 read [GUIDE.md](GUIDE.md) first: it defines every answer, with tie-break rules
 and example clips; the review page links to it.
 
